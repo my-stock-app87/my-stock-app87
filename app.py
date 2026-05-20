@@ -33,7 +33,6 @@ def code(name):
     row = df_stock[df_stock["Name"] == name]
     if row.empty:
         return None
-    # 🟢 원본과 똑같이 0번째 행의 "Code" 컬럼을 가져오도록 원상복구했습니다.
     return row.iloc[0]["Code"]
 
 @st.cache_data(ttl=10)  # 실시간 데이터 인식을 위해 캐시 생존 주기(TTL) 단축
@@ -71,3 +70,61 @@ def ind(df):
     rs = avg_gain / (avg_loss + 1e-10) # 0 나누기 방지
     df["RSI"] = 100 - (100 / (1 + rs))
     return df
+
+# =====================================================
+# UI 레이아웃 및 대시보드 시각화
+# =====================================================
+# 사이드바: 종목 선택 및 기간 설정
+with st.sidebar:
+    st.header("🔍 종목 및 기간 설정")
+    selected_name = st.selectbox("분석할 종목을 선택하세요", names, index=names.index("삼성전자") if "삼성전자" in names else 0)
+    period = st.slider("조회 기간 (거래일 기준)", min_value=30, max_value=500, value=120)
+
+selected_code = code(selected_name)
+raw_df = get_price(selected_code)
+df_processed = ind(raw_df)
+
+if not df_processed.empty:
+    # 최신 데이터 추출 (가장 마지막 행)
+    latest = df_processed.iloc[-1]
+    prev = df_processed.iloc[-2]
+    
+    current_price = int(latest["Close"])
+    prev_price = int(prev["Close"])
+    price_diff = current_price - prev_price
+    price_ratio = (price_diff / prev_price) * 100
+    
+    # 📱 [모바일 최적화]: 핸드폰 가로폭에 맞춰 상단 메트릭 숫자가 깨지지 않게 2개씩 분할 배치
+    col_a1, col_a2 = st.columns(2)
+    with col_a1:
+        st.metric("현재가", f"{current_price:,} 원", f"{price_diff:,} 원 ({price_ratio:.2f}%)")
+    with col_a2:
+        rsi_val = latest["RSI"]
+        rsi_status = "🔴 과매수" if rsi_val >= 70 else "🔵 과매도" if rsi_val <= 30 else "🟢 보통"
+        st.metric("RSI (14)", f"{rsi_val:.2f}", rsi_status)
+
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        st.metric("🟢 적정매수가", f"{int(latest['MA5']):,} 원")
+    with col_b2:
+        st.metric("🔴 단기목표 매도가", f"{int(latest['MA20']):,} 원")
+
+    st.markdown("---")
+
+    # 기간 필터링 적용하여 차트 시각화
+    df_visual = df_processed.tail(period)
+
+    # 2. 메인 차트 영역 (원본 차트 그대로 유지)
+    st.subheader(f"📈 {selected_name} ({selected_code}) 주가 및 이동평균선")
+    chart_data = df_visual[["Close", "MA5", "MA20"]]
+    st.line_chart(chart_data)
+
+    # 3. 서브 차트 영역 (핸드폰에서 2열 배치 시 깨지므로 세로로 길게 단일 배치)
+    st.subheader("📊 거래량 변동")
+    st.bar_chart(df_visual["Volume"])
+    
+    st.subheader("⏱️ RSI 지표 추이")
+    st.line_chart(df_visual["RSI"])
+
+else:
+    st.warning("⚠️ 데이터를 불러오지 못했거나 지표를 계산하기 위한 데이터량이 부족합니다. (최소 25거래일 이상 필요)")
