@@ -31,7 +31,8 @@ def code(name):
     row = df_stock[df_stock["Name"] == name]
     if row.empty:
         return None
-    return row.iloc["Code"]
+    # 🟢 [에러 해결 수정 포인트] iloc 에러를 완전히 방지하는 올바른 판다스 컬럼 추출 문법입니다.
+    return row["Code"].values[0]
 
 @st.cache_data(ttl=5) # 실시간 변경 인식을 위한 초단기 TTL 설정
 def get_price(c):
@@ -66,13 +67,11 @@ def ind(df):
     df["AI_Sell"] = df["MA20"] + (std20 * 1.2)  
 
     # 📈 오늘 예상 상승률 계산 수식
-    # 당일 세력 강도와 단기 변동성(std5)을 결합하여 가중치 스케일링
     std5 = df["Close"].rolling(5).std()
     df["Pred_Return"] = (df["Volume_Strength"] / 200) * (std5 / (df["Close"] + 1e-10)) * 100
-    df["Pred_Return"] = np.clip(df["Pred_Return"], 0.5, 28.5) # 상하한선 가이드 제한
+    df["Pred_Return"] = np.clip(df["Pred_Return"], 0.5, 28.5) 
 
     # 🎯 AI 코딩 예측 성공률 계산 수식
-    # 최근 5일간 이평선 수렴도와 거래량 안정성을 기반으로 예측 신뢰 점수 모델링
     vol_stability = 100 - np.minimum(df["Volume_Strength"] * 0.1, 30)
     df["Pred_Accuracy"] = np.where(df["Close"] > df["MA5"], 75.0 + (vol_stability * 0.2), 65.0 + (vol_stability * 0.2))
     df["Pred_Accuracy"] = np.clip(df["Pred_Accuracy"], 55.0, 96.8)
@@ -97,7 +96,7 @@ def scan_market_signals(df_all_stocks):
     for name in leaders:
         c_code = df_all_stocks[df_all_stocks["Name"] == name]
         if c_code.empty: continue
-        c = c_code.iloc["Code"]
+        c = c_code.iloc[0]["Code"] # 정수 인덱서 수정 반영
         df = fdr.DataReader(c)
         if df is None or len(df) < 25: continue
         
@@ -143,17 +142,16 @@ if not df_processed.empty:
     whale_ratio = latest["Volume_Strength"]
     stock_score_val = latest["Stock_Score"]
     
-    # 신규 지표 바인딩
     pred_return_val = latest["Pred_Return"]
     pred_accuracy_val = latest["Pred_Accuracy"]
 
     st.markdown("---")
 
-    # 📱 지정된 3개 모바일 전용 탭 구조 유지
+    # 📱 3개 모바일 전용 탭 구조
     tab1, tab2, tab3 = st.tabs(["1. 종목분석", "2. 오늘의 급등주", "3. 오늘 하락이지만 내일 상승할 주 추천"])
 
     with tab1:
-        # 📱 가로폭 방어형 메트릭 3열 배치 설계 (실시간 반영 및 신규 지표 수식 연결)
+        # 가로폭 방어형 메트릭 3열 배치
         row1_c1, row1_c2, row1_c3 = st.columns(3)
         with row1_c1:
             st.metric("현재가 (실시간)", f"{current_price:,} 원", f"{price_diff:,} 원 ({price_ratio:.2f}%)")
@@ -172,7 +170,7 @@ if not df_processed.empty:
             
         st.metric("🎯 종합 추천점수", f"{round(stock_score_val, 1)} 점 / 100점")
 
-        # 그날 주식상황 한글 분석 안내판
+        # 당일 종합 주식상황 AI 분석
         st.markdown("#### 📝 당일 종합 주식상황 AI 분석")
         if whale_ratio >= 150 and price_ratio > 0:
             analysis_brief = f"현재 {selected_name}은(는) 세력 유입 비율({int(whale_ratio)}%)이 급격히 터지면서 코딩 모델 연산 결과 오늘 종가 기준 +{pred_return_val:.2f}% 수준의 강한 추가 오버슈팅이 기대됩니다. 예측 성공 신뢰도가 {pred_accuracy_val:.1f}%로 매우 높게 집행되고 있으므로 상방을 강하게 열어두고 대응하세요."
