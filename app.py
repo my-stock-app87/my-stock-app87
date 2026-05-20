@@ -47,7 +47,7 @@ def get_price(c):
         return pd.DataFrame()
 
 # =====================================================
-# 뉴스 + 감성
+# 뉴스 감성
 # =====================================================
 def sentiment(text):
     pos = ["상승", "급등", "호재", "개선", "증가", "흑자", "기대"]
@@ -72,13 +72,12 @@ def get_news(name):
     try:
         url = f"https://news.google.com/rss/search?q={name}+주가&hl=ko&gl=KR&ceid=KR:ko"
         feed = feedparser.parse(url)
-
         return [(e.title, sentiment(e.title)) for e in feed.entries[:5]]
     except:
         return [("뉴스 없음", "⚖️ 중립")]
 
 # =====================================================
-# 지표 계산
+# 지표
 # =====================================================
 def ind(df):
     if df is None or df.empty or len(df) < 25:
@@ -90,7 +89,6 @@ def ind(df):
     df["MA20"] = df["Close"].rolling(20).mean()
     df["VOL20"] = df["Volume"].rolling(20).mean()
 
-    # 🐳 세력 진입
     vol_ratio = df["Volume"] / (df["VOL20"] + 1e-10)
     price_momentum = (df["Close"] - df["Open"]) / (df["Open"] + 1e-10)
     trend_strength = (df["Close"] - df["MA5"]) / (df["MA5"] + 1e-10)
@@ -104,16 +102,13 @@ def ind(df):
     df["Whale"] = 100 * (1 / (1 + np.exp(-(raw - 50) / 20)))
     df["Whale"] = np.clip(df["Whale"], 0, 100)
 
-    # 📈 상승률
     std5 = df["Close"].rolling(5).std()
     df["Pred_Return"] = (df["Whale"] / 100) * (std5 / (df["Close"] + 1e-10)) * 100
     df["Pred_Return"] = np.clip(df["Pred_Return"], 0.5, 28.5)
 
-    # 🎯 적중률
     stability = 100 - np.minimum(df["Whale"] * 0.1, 30)
     df["Accuracy"] = np.clip(70 + stability * 0.25, 50, 97)
 
-    # 📊 점수
     rng = (df["High"] - df["Low"]).replace(0, 1e-10)
     body = ((df["Close"] - df["Open"]) / rng) * 30
 
@@ -122,14 +117,13 @@ def ind(df):
 
     df["Score"] = np.clip(vol_score + ma_align + body, 10, 100)
 
-    # 🎯 추천 매수/매도
     df["Buy"] = df["MA20"] - (df["Close"].rolling(20).std() * 0.8)
     df["Sell"] = df["MA20"] + (df["Close"].rolling(20).std() * 0.8)
 
     return df.dropna()
 
 # =====================================================
-# 분석 함수
+# 분석
 # =====================================================
 def comment(df):
     l = df.iloc[-1]
@@ -184,10 +178,10 @@ def scan_pumps():
                 "현재가": f"{int(l['Close']):,}원",
                 "등락률": f"{change:.2f}%",
                 "세력": f"{l['Whale']:.1f}%",
-                "급등점수": round(score, 2)
+                "점수": round(score, 2)
             })
 
-    return pd.DataFrame(results).sort_values("급등점수", ascending=False).head(10)
+    return pd.DataFrame(results).sort_values("점수", ascending=False).head(10)
 
 # =====================================================
 # UI
@@ -204,40 +198,56 @@ if not df.empty:
     price = int(l["Close"])
     diff = price - int(p["Close"])
 
-    tab1, tab2, tab3 = st.tabs([
-        "📊 종목분석",
-        "🚀 급등주",
-        "🎯 내일 반등"
-    ])
+    tab1, tab2, tab3 = st.tabs(["📊 종목분석", "🚀 급등주", "🎯 내일 반등"])
 
     # =====================
     # TAB1
     # =====================
     with tab1:
-        st.markdown("### 📊 종목 핵심 데이터")
 
-        summary_df = pd.DataFrame([{
-            "현재가": f"{price:,}원",
-            "전일 대비": f"{diff:+,}원",
-            "상승 예상": f"{l['Pred_Return']:.1f}%",
-            "적중률": f"{l['Accuracy']:.1f}%",
-            "세력 진입": f"{l['Whale']:.1f}%",
-            "추천 매수": f"{int(l['Buy']):,}원",
-            "추천 매도": f"{int(l['Sell']):,}원"
-        }])
+        # 🔥 현재가 대형
+        base = price - diff
+        change_pct = (diff / base) * 100 if base != 0 else 0
+        color = "red" if diff > 0 else "blue"
+        arrow = "▲" if diff > 0 else "▼"
+
+        st.markdown(f"""
+        <div style="text-align:center;font-size:46px;font-weight:900;color:{color};">
+            {price:,}원
+        </div>
+        <div style="text-align:center;font-size:18px;font-weight:700;color:{color};margin-bottom:15px;">
+            {arrow} {diff:+,}원 ({change_pct:+.2f}%)
+        </div>
+        """, unsafe_allow_html=True)
+
+        # 📊 2줄 표
+        summary_df = pd.DataFrame([
+            {
+                "상승예상": f"{l['Pred_Return']:.1f}%",
+                "적중률": f"{l['Accuracy']:.1f}%",
+                "세력": f"{l['Whale']:.1f}%",
+                "상태": "분석"
+            },
+            {
+                "매수": f"{int(l['Buy']):,}원",
+                "매도": f"{int(l['Sell']):,}원",
+                "전일대비": f"{diff:+,}원",
+                "구간": "실시간"
+            }
+        ])
 
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
-        # 🚨 매수/매도 신호
-        buy_signal = l["Whale"] >= 60 and l["Close"] <= l["Buy"] * 1.02
+        # 🚨 신호
+        buy_signal = l["Whale"] >= 60 and l["Close"] <= l["Buy"] * 1.02 and l["Pred_Return"] > 2
         sell_signal = l["Close"] >= l["Sell"] * 0.98
 
         st.markdown("### 🚨 신호")
 
         if buy_signal:
-            st.success("🟢 지금 매수 타이밍")
+            st.markdown("🟥 **매수 신호**")
         elif sell_signal:
-            st.error("🔴 매도 구간")
+            st.markdown("⚪ **팔아**")
         else:
             st.info("⚪ 관망")
 
