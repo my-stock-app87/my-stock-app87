@@ -44,21 +44,27 @@ if st.button("실시간 분석 실행"):
             ticker_code = real_code + suffix
             
             try:
-                # [수정] 가장 안전하고 에러가 없는 Ticker 데이터 추출 방식으로 교체했습니다.
-                stock_ticker = yf.Ticker(ticker_code)
-                df = stock_ticker.history(period="3m", interval="1d")
+                # 야후 파이낸스 서버에서 원시 데이터를 직접 다운로드
+                df = yf.download(ticker_code, period="3m", interval="1d")
                 
                 if df.empty:
                     st.error("❌ 데이터를 가져오지 못했습니다. 시장 선택(코스피/코스닥)이 종목과 맞는지 확인해 주세요.")
                 else:
-                    # 표 컬럼 정리
+                    # ✨ [핵심 수정] 최신 야후 파이낸스의 다중 컬럼 버그를 강제로 파괴하고 단일 표로 세탁합니다.
                     if isinstance(df.columns, pd.MultiIndex):
                         df.columns = df.columns.get_level_values(0)
-
-                    df['MA5'] = df['Close'].rolling(window=5).mean()
-                    df['MA20'] = df['Close'].rolling(window=20).mean()
                     
-                    delta = df['Close'].diff()
+                    df = df.copy()
+                    
+                    # 수치 연산을 위해 모든 소수점 데이터를 강제 변환
+                    close_series = pd.to_numeric(df['Close'].squeeze(), errors='coerce')
+                    
+                    # 기술적 지표 계산 (5일선, 20일선)
+                    df['MA5'] = close_series.rolling(window=5).mean()
+                    df['MA20'] = close_series.rolling(window=20).mean()
+                    
+                    # RSI 지표 자동 계산
+                    delta = close_series.diff()
                     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
                     rs = gain / (loss + 1e-9)
@@ -66,25 +72,29 @@ if st.button("실시간 분석 실행"):
 
                     latest = df.iloc[-1]
                     prev = df.iloc[-2]
+                    
                     current_price = float(latest['Close'])
                     rsi_val = float(latest['RSI'])
-
+                    
+                    # 화면 가격 출력
                     st.metric(label="현재 가격", value=f"{current_price:,.0f} 원")
                     
-                    if latest['MA5'] > latest['MA20'] and prev['MA5'] <= prev['MA20']:
-                        st.success("🔮 내일 예측: 상승 가능성 높음! (🚀 매수 타이밍)")
+                    # AI 매매 알고리즘 결과 리포트
+                    if float(latest['MA5']) > float(latest['MA20']) and float(prev['MA5']) <= float(prev['MA20']):
+                        st.success("🔮 내일 예측: 상승 가능성 높음! (🚀 골든크로스 매수 타이밍)")
                     elif rsi_val < 30:
-                        st.success("🔮 내일 예측: 과매도 상태로 반등 가능! (🛒 저점 매수)")
-                    elif latest['MA5'] < latest['MA20'] and prev['MA5'] >= prev['MA20']:
-                        st.error("🔮 내일 예측: 하락 위험 높음! (🚨 매도 타이밍)")
+                        st.success("🔮 내일 예측: 과매도 상태로 반등 가능! (🛒 저점 매수 찬스)")
+                    elif float(latest['MA5']) < float(latest['MA20']) and float(prev['MA5']) >= float(prev['MA20']):
+                        st.error("🔮 내일 예측: 하락 위험 높음! (🚨 데드크로스 매도 타이밍)")
                     elif rsi_val > 70:
-                        st.error("🔮 내일 예측: 과열 상태로 조정 가능! (💰 익절 검토)")
+                        st.error("🔮 내일 예측: 과열 상태로 조정 가능! (💰 익절 분할 매도)")
                     else:
-                        st.warning("🔮 내일 예측: 현재 횡보 구간 (관망 추천)")
+                        st.warning("🔮 내일 예측: 현재 힘겨루기 중 (당분간 관망 추천)")
 
-                    st.line_chart(df['Close'])
+                    # 주가 그래프 그리기
+                    st.line_chart(close_series)
                     
                     st.subheader("🤖 AI에게 물어볼 프롬프트")
                     st.code(f"대한민국 {user_search} 종목의 최근 테마주 엮임 현황과 대장주 추천해줘.", language="text")
             except Exception as e:
-                st.error(f"⚠️ 데이터 읽기 요류 발생: {e}")
+                st.error(f"⚠️ 시스템 연동 오류 발생: {e}")
