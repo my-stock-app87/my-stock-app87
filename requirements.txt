@@ -1,6 +1,6 @@
 streamlit
 pandas
 numpy
-FinanceDataReader
-streamlit-autorefresh
+requests
 feedparser
+beautifulsoup4
