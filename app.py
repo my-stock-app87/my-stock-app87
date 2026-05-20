@@ -28,7 +28,7 @@ def code(name):
     return r["Code"].iloc[0] if not r.empty else None
 
 # =========================
-# 가격
+# 가격 데이터
 # =========================
 @st.cache_data(ttl=5)
 def get_price(c):
@@ -46,7 +46,7 @@ def get_news(name):
         return []
 
 # =========================
-# 지표 (당일 기준 핵심)
+# 지표 (당일 기준)
 # =========================
 def ind(df):
     df = df.copy()
@@ -63,9 +63,6 @@ def ind(df):
 
     df["Acc"] = np.clip(70 + (100 - df["Whale"])*0.2, 50, 97)
 
-    # =========================
-    # 🔥 당일 기준 추천매수/매도
-    # =========================
     tr = df["High"] - df["Low"]
     avg_tr = tr.rolling(5).mean()
 
@@ -75,17 +72,17 @@ def ind(df):
     return df.dropna()
 
 # =========================
-# 종합 분석
+# 분석 문장
 # =========================
 def analysis_text(l):
     if l["Whale"] > 65 and l["Pred"] > 2:
-        return "🚀 세력 유입 강함 + 상승 모멘텀 → 단기 상승 가능성 높음"
+        return "🚀 세력 유입 강함 → 단기 상승 가능성 높음"
     elif l["Close"] < l["Buy"]:
-        return "📉 눌림 구간 → 분할 매수 고려"
+        return "📉 눌림 구간 → 분할 매수 가능"
     elif l["Close"] > l["Sell"]:
         return "⚠️ 과열 구간 → 차익 실현 구간"
     else:
-        return "📊 박스권 → 방향성 대기"
+        return "📊 박스권 → 관망 구간"
 
 # =========================
 # UI
@@ -123,17 +120,19 @@ if not df.empty:
         """, unsafe_allow_html=True)
 
         # =========================
-        # 📊 1줄 핵심 표 (완성형)
+        # 🔥 안 깨지는 1줄 바 (GRID)
         # =========================
         st.markdown(f"""
         <div style="
-            display:flex;
-            justify-content:space-between;
+            display:grid;
+            grid-template-columns:repeat(6, 1fr);
+            gap:10px;
             background:#f8f9fa;
             padding:14px;
             border-radius:14px;
             font-weight:800;
             font-size:13px;
+            text-align:center;
         ">
             <div>📈 상승<br><span style="color:#ff4d4d;font-size:16px;">{l['Pred']:.1f}%</span></div>
 
@@ -141,9 +140,9 @@ if not df.empty:
 
             <div>🐳 세력<br><span style="color:#1e90ff;font-size:16px;">{l['Whale']:.1f}%</span></div>
 
-            <div>🟢 추천매수<br><span style="color:#00a86b;font-size:16px;">{int(l['Buy']):,}</span></div>
+            <div>🟢 매수<br><span style="color:#00a86b;font-size:16px;">{int(l['Buy']):,}</span></div>
 
-            <div>🔴 추천매도<br><span style="color:#ff3b3b;font-size:16px;">{int(l['Sell']):,}</span></div>
+            <div>🔴 매도<br><span style="color:#ff3b3b;font-size:16px;">{int(l['Sell']):,}</span></div>
 
             <div>📊 전일<br><span style="color:{'red' if diff>0 else 'blue'};font-size:16px;">
                 {diff:+,}
@@ -152,7 +151,7 @@ if not df.empty:
         """, unsafe_allow_html=True)
 
         # =========================
-        # 🚨 신호
+        # 신호
         # =========================
         buy_signal = l["Whale"] > 60 and l["Close"] <= l["Buy"]*1.02
         sell_signal = l["Close"] >= l["Sell"]*0.98
@@ -165,7 +164,7 @@ if not df.empty:
             st.info("⚪ 관망")
 
         # =========================
-        # 🧠 종합 분석
+        # 종합 분석
         # =========================
         st.markdown("### 🧠 종합 분석")
 
@@ -183,7 +182,7 @@ if not df.empty:
         """, unsafe_allow_html=True)
 
         # =========================
-        # 📰 뉴스
+        # 뉴스
         # =========================
         st.markdown("### 📰 뉴스")
         for n in get_news(name):
