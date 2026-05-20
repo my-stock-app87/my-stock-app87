@@ -33,6 +33,7 @@ def code(name):
     row = df_stock[df_stock["Name"] == name]
     if row.empty:
         return None
+    # 🟢 원본과 똑같이 0번째 행의 "Code" 컬럼을 가져오도록 원상복구했습니다.
     return row.iloc[0]["Code"]
 
 @st.cache_data(ttl=10)  # 실시간 데이터 인식을 위해 캐시 생존 주기(TTL) 단축
