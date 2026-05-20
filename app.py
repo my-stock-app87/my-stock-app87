@@ -16,12 +16,14 @@ st_autorefresh(interval=5000, key="global_refresh")
 # =====================================================
 # 데이터 로드 및 최적화 캐싱
 # =====================================================
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)  # 종목 리스트는 하루에 한 번 혹은 드물게 변경되므로 캐시 주기 확장
 def stock_list():
     try:
         df = fdr.StockListing("KRX")[["Code", "Name"]]
+        # 무효 데이터나 인덱스 중복 방지
         return df.dropna().drop_duplicates(subset=["Name"])
     except:
+        # 대비용 하드코딩 샘플 데이터셋
         return pd.DataFrame({"Code": ["005930", "000660"], "Name": ["삼성전자", "SK하이닉스"]})
 
 df_stock = stock_list()
@@ -31,10 +33,9 @@ def code(name):
     row = df_stock[df_stock["Name"] == name]
     if row.empty:
         return None
-    # 🔴 수정 완료: 문자열 인덱서 오류를 방지하고 정확히 첫 번째 행의 Code를 가져옵니다.
     return row.iloc[0]["Code"]
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=10)  # 실시간 데이터 인식을 위해 캐시 생존 주기(TTL) 단축
 def get_price(c):
     try:
         if not c:
@@ -47,43 +48,33 @@ def get_price(c):
         return pd.DataFrame()
 
 # =====================================================
-# 지표 및 가격 가이드 연산공학
+# 지표 연산공학
 # =====================================================
 def ind(df):
     if df is None or df.empty or len(df) < 25:
         return pd.DataFrame()
 
     df = df.copy()
-    # 이동평균선 및 거래량 평형선
     df["MA5"] = df["Close"].rolling(5).mean()
     df["MA20"] = df["Close"].rolling(20).mean()
     df["VOL20"] = df["Volume"].rolling(20).mean()
 
-    # RSI 지표 최적화 연산
     delta = df["Close"].diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
 
+    # 웰스 와일더(Wells Wilder) 방식 공식 RSI 최적화 구현
     avg_gain = gain.ewm(alpha=1/14, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/14, adjust=False).mean()
     
-    rs = avg_gain / (avg_loss + 1e-10)
+    rs = avg_gain / (avg_loss + 1e-10) # 0 나누기 방지
     df["RSI"] = 100 - (100 / (1 + rs))
-
-    # 변동성 채널(볼린저 밴드) 기반 명확한 가격 가이드 분리
-    std20 = df["Close"].rolling(20).std()
-    
-    # 🟢 적정 매수가: 중심선에서 -1.5 표준편차 차감 (주가보다 항상 낮은 저점 가이드)
-    df["Target_Buy"] = df["MA20"] - (std20 * 1.5)
-    
-    # 🔴 단기 목표 매도가: 중심선에서 +1.5 표준편차 가산 (주가보다 항상 높은 고점 가이드)
-    df["Target_Sell"] = df["MA20"] + (std20 * 1.5)
-    
     return df
 
 # =====================================================
 # UI 레이아웃 및 대시보드 시각화
 # =====================================================
+# 사이드바: 종목 선택 및 기간 설정
 with st.sidebar:
     st.header("🔍 종목 및 기간 설정")
     selected_name = st.selectbox("분석할 종목을 선택하세요", names, index=names.index("삼성전자") if "삼성전자" in names else 0)
@@ -94,6 +85,7 @@ raw_df = get_price(selected_code)
 df_processed = ind(raw_df)
 
 if not df_processed.empty:
+    # 최신 데이터 추출 (가장 마지막 행)
     latest = df_processed.iloc[-1]
     prev = df_processed.iloc[-2]
     
@@ -102,25 +94,20 @@ if not df_processed.empty:
     price_diff = current_price - prev_price
     price_ratio = (price_diff / prev_price) * 100
     
-    # 가이드 가격 데이터 정형화 (결측치 예외 처리 포함)
-    target_buy_price = int(latest["Target_Buy"]) if not pd.isna(latest["Target_Buy"]) else current_price
-    target_sell_price = int(latest["Target_Sell"]) if not pd.isna(latest["Target_Sell"]) else current_price
-    
-    # 1. 상단 핵심 실시간 메트릭 화면 설계
+    # 1. 상단 핵심 실시간 메트릭 화면 배치
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("현재가", f"{current_price:,} 원", f"{price_diff:,} 원 ({price_ratio:.2f}%)")
+    
+    # 🔴 [글자 변경 구간]: col2와 col3의 라벨과 매핑 데이터를 단기목표 매도가와 적정매수가로 교체
     with col2:
-        # 매수가까지 남은 하락폭 또는 괴리율 계산
-        buy_gap = ((target_buy_price - current_price) / current_price) * 100
-        st.metric("🟢 AI 추천 적정 매수가", f"{target_buy_price:,} 원", f"괴리율: {buy_gap:.1f}%", delta_color="inverse")
+        st.metric("🔴 단기목표 매도가", f"{int(latest['MA20']):,} 원")
     with col3:
-        # 목표 매도가까지 도달 시 기대할 수 있는 상승여력 계산
-        sell_gap = ((target_sell_price - current_price) / current_price) * 100
-        st.metric("🔴 단기 목표 매도가", f"{target_sell_price:,} 원", f"상승여력: +{sell_gap:.1f}%")
+        st.metric("🟢 적정매수가", f"{int(latest['MA5']):,} 원")
+        
     with col4:
         rsi_val = latest["RSI"]
-        rsi_status = "❌ 과매수 (분할매도)" if rsi_val >= 70 else "✨ 과매도 (분할매수)" if rsi_val <= 30 else "🟢 보통"
+        rsi_status = "🔴 과매수" if rsi_val >= 70 else "🔵 과매도" if rsi_val <= 30 else "🟢 보통"
         st.metric("RSI (14)", f"{rsi_val:.2f}", rsi_status)
 
     st.markdown("---")
@@ -128,9 +115,9 @@ if not df_processed.empty:
     # 기간 필터링 적용하여 차트 시각화
     df_visual = df_processed.tail(period)
 
-    # 2. 메인 차트 영역 (주가 및 가격 가이드 라인)
-    st.subheader(f"📈 {selected_name} ({selected_code}) 가격 가이드 및 주가 추이")
-    chart_data = df_visual[["Close", "Target_Buy", "Target_Sell", "MA20"]]
+    # 2. 메인 차트 영역 (주가 및 이동평균선)
+    st.subheader(f"📈 {selected_name} ({selected_code}) 주가 및 이동평균선")
+    chart_data = df_visual[["Close", "MA5", "MA20"]]
     st.line_chart(chart_data)
 
     # 3. 서브 차트 영역 (거래량 및 RSI)
