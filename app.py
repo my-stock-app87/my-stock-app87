@@ -1,3 +1,4 @@
+```python id="f0x8s2"
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -5,21 +6,21 @@ from scipy.stats import pearsonr
 from datetime import datetime
 import FinanceDataReader as fdr
 
-# -------------------------------------------------
+# =================================================
 # 기본 설정
-# -------------------------------------------------
+# =================================================
 st.set_page_config(
-    page_title="👑 주식 AI 통합 분석기",
+    page_title="👑 AI 주식 마스터",
     page_icon="👑",
     layout="wide"
 )
 
-st.title("👑 주식 AI 통합 분석기")
-st.caption("전체 한국 주식 실시간 AI 분석 시스템")
+st.title("👑 AI 주식 마스터")
+st.caption("실시간 한국 전체 주식 AI 분석 시스템")
 
-# -------------------------------------------------
-# 전체 종목 리스트
-# -------------------------------------------------
+# =================================================
+# 전체 종목 로딩
+# =================================================
 @st.cache_data(ttl=3600)
 def load_stock_list():
 
@@ -31,9 +32,9 @@ stock_df = load_stock_list()
 
 stock_names = stock_df['Name'].tolist()
 
-# -------------------------------------------------
+# =================================================
 # 종목 코드 찾기
-# -------------------------------------------------
+# =================================================
 def get_code(name):
 
     row = stock_df[
@@ -45,33 +46,37 @@ def get_code(name):
 
     return None
 
-# -------------------------------------------------
-# 주가 데이터
-# -------------------------------------------------
+# =================================================
+# 가격 데이터
+# =================================================
 @st.cache_data(ttl=300)
 def load_price(code):
 
     try:
+
         df = fdr.DataReader(code)
 
         if df.empty:
             return pd.DataFrame()
 
-        df = df.tail(120).reset_index()
+        df = df.tail(180).reset_index()
 
         return df
 
     except:
+
         return pd.DataFrame()
 
-# -------------------------------------------------
+# =================================================
 # 보조지표
-# -------------------------------------------------
+# =================================================
 def add_indicator(df):
 
+    # 이동평균
     df['MA5'] = df['Close'].rolling(5).mean()
     df['MA20'] = df['Close'].rolling(20).mean()
 
+    # 거래량 평균
     df['Vol20'] = df['Volume'].rolling(20).mean()
 
     # RSI
@@ -87,49 +92,277 @@ def add_indicator(df):
 
     df['RSI'] = 100 - (100 / (1 + rs))
 
+    # MACD
+    ema12 = df['Close'].ewm(span=12).mean()
+    ema26 = df['Close'].ewm(span=26).mean()
+
+    df['MACD'] = ema12 - ema26
+    df['MACD_SIGNAL'] = df['MACD'].ewm(span=9).mean()
+
+    # 볼린저밴드
+    df['STD'] = df['Close'].rolling(20).std()
+
+    df['Upper'] = (
+        df['MA20']
+        + (df['STD'] * 2)
+    )
+
+    df['Lower'] = (
+        df['MA20']
+        - (df['STD'] * 2)
+    )
+
     return df.dropna()
 
-# -------------------------------------------------
-# 세력 탐지
-# -------------------------------------------------
-def detect_signal(df):
+# =================================================
+# 세력 확률
+# =================================================
+def power_probability(df):
 
     latest = df.iloc[-1]
 
-    volume_burst = (
-        latest['Volume'] > latest['Vol20'] * 2
-    )
+    score = 0
 
-    ma_break = latest['Close'] > latest['MA5']
+    if latest['Volume'] > latest['Vol20'] * 2:
+        score += 35
 
-    bullish = latest['Close'] > latest['Open']
+    if latest['Close'] > latest['Open'] * 1.03:
+        score += 20
 
-    if volume_burst and ma_break and bullish:
-        return "🚨 세력 매집 강력 의심"
+    if latest['Close'] > latest['MA5']:
+        score += 20
 
-    elif volume_burst:
-        return "🔥 거래량 급등 포착"
+    if latest['MACD'] > latest['MACD_SIGNAL']:
+        score += 15
 
-    elif latest['RSI'] < 30:
-        return "📉 과매도 구간"
+    if 45 <= latest['RSI'] <= 70:
+        score += 10
+
+    return min(score, 100)
+
+# =================================================
+# AI 종합 점수
+# =================================================
+def ai_score(df):
+
+    latest = df.iloc[-1]
+
+    score = 0
+
+    if latest['Volume'] > latest['Vol20'] * 2:
+        score += 25
+
+    if latest['MA5'] > latest['MA20']:
+        score += 20
+
+    if latest['MACD'] > latest['MACD_SIGNAL']:
+        score += 20
+
+    if latest['Close'] > latest['Open']:
+        score += 15
+
+    if 40 <= latest['RSI'] <= 70:
+        score += 20
+
+    return min(score, 100)
+
+# =================================================
+# 목표가
+# =================================================
+def target_price(df):
+
+    latest = df.iloc[-1]
+
+    return int(latest['Close'] * 1.08)
+
+# =================================================
+# 손절라인
+# =================================================
+def stop_loss(df):
+
+    latest = df.iloc[-1]
+
+    return int(latest['MA20'] * 0.97)
+
+# =================================================
+# 리스크
+# =================================================
+def risk_level(df):
+
+    latest = df.iloc[-1]
+
+    if latest['RSI'] > 80:
+        return "🚨 매우 위험"
+
+    elif latest['RSI'] > 70:
+        return "⚠️ 단기 과열"
 
     else:
-        return "💤 일반 흐름"
+        return "🟢 정상 흐름"
 
-# -------------------------------------------------
+# =================================================
+# MACD 분석
+# =================================================
+def macd_signal(df):
+
+    latest = df.iloc[-1]
+
+    if latest['MACD'] > latest['MACD_SIGNAL']:
+
+        return "🟢 MACD 골든크로스"
+
+    return "🔴 MACD 하락 흐름"
+
+# =================================================
+# 볼린저 분석
+# =================================================
+def bollinger_signal(df):
+
+    latest = df.iloc[-1]
+
+    if latest['Close'] > latest['Upper']:
+
+        return "🔥 과열 가능성"
+
+    elif latest['Close'] < latest['Lower']:
+
+        return "🟢 저점 반등 가능성"
+
+    return "📊 정상 밴드 흐름"
+
+# =================================================
+# AI 브리핑
+# =================================================
+def ai_briefing(df):
+
+    latest = df.iloc[-1]
+
+    score = ai_score(df)
+
+    text = []
+
+    if score >= 80:
+
+        text.append(
+            "🔥 강한 상승 흐름."
+        )
+
+    elif score >= 60:
+
+        text.append(
+            "📈 상승 우세 흐름."
+        )
+
+    else:
+
+        text.append(
+            "📉 보수적 접근 필요."
+        )
+
+    if latest['RSI'] > 70:
+
+        text.append(
+            "⚠️ 단기 과열."
+        )
+
+    elif latest['RSI'] < 30:
+
+        text.append(
+            "🟢 과매도 반등 가능."
+        )
+
+    return " ".join(text)
+
+# =================================================
+# 매수 타이밍
+# =================================================
+def buy_timing(df):
+
+    latest = df.iloc[-1]
+
+    if (
+        latest['Close'] > latest['MA5']
+        and latest['MACD'] > latest['MACD_SIGNAL']
+    ):
+
+        return "🟢 눌림목 매수 가능"
+
+    elif latest['RSI'] < 30:
+
+        return "🔥 과매도 반등 매수 가능"
+
+    return "⚠️ 관망 추천"
+
+# =================================================
+# 매도 타이밍
+# =================================================
+def sell_timing(df):
+
+    latest = df.iloc[-1]
+
+    if latest['RSI'] > 75:
+
+        return "🔥 과열권 분할매도 추천"
+
+    elif latest['Close'] < latest['MA5']:
+
+        return "⚠️ 단기 이탈 주의"
+
+    return "✅ 홀딩 가능"
+
+# =================================================
+# 물타기
+# =================================================
+def water_timing(df):
+
+    latest = df.iloc[-1]
+
+    if latest['RSI'] < 35:
+
+        return "🟢 분할 물타기 가능"
+
+    elif latest['Close'] > latest['MA20']:
+
+        return "❌ 고점 물타기 위험"
+
+    return "🟡 애매한 위치"
+
+# =================================================
+# 닮은꼴 설명
+# =================================================
+def similarity_comment(sim):
+
+    if sim >= 80:
+
+        return (
+            "🔥 매우 유사한 흐름."
+            " 같은 테마 수급 가능성."
+        )
+
+    elif sim >= 60:
+
+        return (
+            "📈 비슷한 흐름."
+        )
+
+    return (
+        "📉 흐름 차이가 큼."
+    )
+
+# =================================================
 # 세션
-# -------------------------------------------------
+# =================================================
 if 'portfolio' not in st.session_state:
+
     st.session_state['portfolio'] = []
 
-# -------------------------------------------------
+# =================================================
 # 탭
-# -------------------------------------------------
-tab0, tab1, tab2, tab3 = st.tabs([
+# =================================================
+tab0, tab1, tab2 = st.tabs([
     "💰 내 보유주식",
     "🔍 상세분석",
-    "⚖️ 닮은꼴 분석",
-    "🔮 AI 추천주"
+    "⚖️ 닮은꼴 분석"
 ])
 
 # =================================================
@@ -139,7 +372,7 @@ with tab0:
 
     st.subheader("💰 내 보유주식")
 
-    with st.expander("➕ 보유주식 추가"):
+    with st.expander("➕ 종목 추가"):
 
         c1, c2, c3 = st.columns(3)
 
@@ -174,14 +407,12 @@ with tab0:
 
             st.success("추가 완료")
 
-    # 출력
+    # 보유종목 출력
     if len(st.session_state['portfolio']) == 0:
 
-        st.info("등록된 종목 없음")
+        st.info("보유종목 없음")
 
     else:
-
-        total = 0
 
         for idx, item in enumerate(
             st.session_state['portfolio']
@@ -198,45 +429,54 @@ with tab0:
 
             latest = df.iloc[-1]
 
-            now_price = latest['Close']
-
-            eval_price = now_price * item['qty']
-
-            buy_total = item['buy'] * item['qty']
-
-            profit = eval_price - buy_total
+            current = latest['Close']
 
             rate = (
-                profit / (buy_total + 1e-9)
+                (current - item['buy'])
+                / item['buy']
             ) * 100
-
-            total += eval_price
 
             st.markdown("---")
 
             st.markdown(
-                f"### 📦 {item['name']}"
+                f"## 📦 {item['name']}"
             )
 
-            a, b, c, d = st.columns(4)
+            a, b, c = st.columns(3)
 
             a.metric(
                 "현재가",
-                f"{now_price:,.0f}원"
+                f"{current:,.0f}원"
             )
 
             b.metric(
-                "평가금액",
-                f"{eval_price:,.0f}원"
-            )
-
-            c.metric(
                 "수익률",
                 f"{rate:.2f}%"
             )
 
-            d.write(
-                detect_signal(df)
+            c.metric(
+                "AI 점수",
+                f"{ai_score(df)}점"
+            )
+
+            st.success(
+                f"🎯 목표가: {target_price(df):,}원"
+            )
+
+            st.error(
+                f"🛑 손절가: {stop_loss(df):,}원"
+            )
+
+            st.info(
+                f"🤖 매도 타이밍: {sell_timing(df)}"
+            )
+
+            st.warning(
+                f"💧 물타기 타이밍: {water_timing(df)}"
+            )
+
+            st.write(
+                ai_briefing(df)
             )
 
             if st.button(
@@ -245,16 +485,12 @@ with tab0:
                 st.session_state['portfolio'].pop(idx)
                 st.rerun()
 
-        st.success(
-            f"💵 총 평가자산: {total:,.0f}원"
-        )
-
 # =================================================
 # TAB 1
 # =================================================
 with tab1:
 
-    st.subheader("🔍 1종목 상세분석")
+    st.subheader("🔍 상세분석")
 
     stock_name = st.selectbox(
         "종목 선택",
@@ -283,8 +519,42 @@ with tab1:
                 f"{latest['Close']:,.0f}원"
             )
 
+            st.metric(
+                "🤖 AI 종합 점수",
+                f"{ai_score(df)}점"
+            )
+
+            st.metric(
+                "🚨 세력 개입 확률",
+                f"{power_probability(df)}%"
+            )
+
+            st.success(
+                f"🎯 목표가: {target_price(df):,}원"
+            )
+
+            st.error(
+                f"🛑 손절가: {stop_loss(df):,}원"
+            )
+
+            st.warning(
+                risk_level(df)
+            )
+
+            st.info(
+                ai_briefing(df)
+            )
+
             st.write(
-                detect_signal(df)
+                macd_signal(df)
+            )
+
+            st.write(
+                bollinger_signal(df)
+            )
+
+            st.success(
+                buy_timing(df)
             )
 
             st.line_chart(
@@ -359,6 +629,10 @@ with tab2:
                 f"{sim:.2f}%"
             )
 
+            st.info(
+                similarity_comment(sim)
+            )
+
             merged['A'] = (
                 merged['Close_x']
                 / merged['Close_x'].iloc[0]
@@ -376,101 +650,4 @@ with tab2:
                     ['A', 'B']
                 ]
             )
-
-# =================================================
-# TAB 3
-# =================================================
-with tab3:
-
-    st.subheader("🔮 AI 추천 급등주")
-
-    now = datetime.now()
-
-    st.info(
-        f"현재 시간: {now.strftime('%Y-%m-%d %H:%M:%S')}"
-    )
-
-    if st.button("🔮 AI 추천 시작"):
-
-        result = []
-
-        sample = stock_df.sample(200)
-
-        progress = st.progress(0)
-
-        for idx, row in enumerate(
-            sample.iterrows()
-        ):
-
-            try:
-
-                code = row[1]['Code']
-                name = row[1]['Name']
-
-                df = load_price(code)
-
-                if len(df) < 30:
-                    continue
-
-                df = add_indicator(df)
-
-                latest = df.iloc[-1]
-
-                score = 0
-
-                # 거래량 폭발
-                if latest['Volume'] > (
-                    latest['Vol20'] * 3
-                ):
-                    score += 40
-
-                # 5일선 돌파
-                if latest['Close'] > latest['MA5']:
-                    score += 20
-
-                # 정배열
-                if latest['MA5'] > latest['MA20']:
-                    score += 20
-
-                # RSI
-                if 40 < latest['RSI'] < 70:
-                    score += 20
-
-                if score >= 70:
-
-                    result.append({
-                        "종목": name,
-                        "현재가": int(latest['Close']),
-                        "AI점수": score,
-                        "RSI": round(
-                            latest['RSI'], 1
-                        )
-                    })
-
-            except:
-                continue
-
-            progress.progress(
-                (idx + 1) / 200
-            )
-
-        if len(result) == 0:
-
-            st.warning("추천 종목 없음")
-
-        else:
-
-            result_df = pd.DataFrame(result)
-
-            result_df = result_df.sort_values(
-                by='AI점수',
-                ascending=False
-            )
-
-            st.success(
-                "🎯 AI 추천 완료"
-            )
-
-            st.dataframe(
-                result_df.head(20)
-            )
+```
