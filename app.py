@@ -1,63 +1,65 @@
 import streamlit as st
 import pandas as pd
-import FinanceDataReader as fdr
-from datetime import datetime, timedelta
+import requests
+import json
+from datetime import datetime
 
 st.set_page_config(page_title="주식 AI", page_icon="📈")
 st.title("📊 나만의 주식 AI 분석기")
 
-# 내부 한국 주식 리스트 변환기
-@st.cache_data
-def load_korean_stocks():
-    try:
-        df_krx = fdr.StockListing('KRX')
-        return df_krx[['Code', 'Name']].to_dict('records')
-    except Exception:
-        return []
-
+# 네이버 검색을 통해 종목코드를 찾아오는 안전한 함수
 def get_stock_code(search_input):
     search_input = search_input.strip()
-    
     if search_input.isdigit() and len(search_input) == 6:
         return search_input
         
-    stocks = load_korean_stocks()
-    for stock in stocks:
-        if stock['Name'] == search_input:
-            st.success(f"🔍 '{stock['Name']}' ({stock['Code']}) 종목을 매칭했습니다!")
-            return stock['Code']
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        url = f"https://naver.com{requests.utils.quote(search_input)}&q_enc=utf-8&st=1&frm=stock&r_format=json"
+        res = requests.get(url, headers=headers, timeout=5).json()
+        items = res.get('items', [])
+        if items and len(items) > 0:
+            code = items[0][0][0]
+            name = items[0][1][0]
+            st.success(f"🔍 '{name}' ({code}) 종목을 찾았습니다!")
+            return code
+    except Exception:
+        pass
     return None
 
-# 사용자 입력창 (이제 시장 선택 메뉴는 필요 없어졌습니다!)
+# 사용자 입력창
 user_search = st.text_input("종목명 또는 코드 6자리 입력 (예: 삼성전자, 에코프로, 005930)", "삼성전자")
 
 if st.button("실시간 분석 실행"):
-    with st.spinner("종목 검색 및 주가 데이터 분석 중..."):
+    with st.spinner("네이버 증권에서 주가 데이터 분석 중..."):
         real_code = get_stock_code(user_search)
         
         if not real_code:
-            st.error("❌ 종목을 찾을 수 없습니다. 이름이 정확한지 확인해 주세요. (예: 삼성전자)")
+            st.error("❌ 종목을 찾을 수 없습니다. 이름이 정확한지 확인해 주세요.")
         else:
             try:
-                # [핵심 수정] 해외 야후 서버 대신, 한국 주식 데이터를 가장 안전하게 가져오는 정식 코드로 전면 교체
-                end_date = datetime.today().strftime('%Y-%m-%d')
-                start_date = (datetime.today() - timedelta(days=120)).strftime('%Y-%m-%d')
+                # [🚨핵심 변경] 야후 서버를 버리고 네이버 증권 일봉 데이터를 직접 가져옵니다.
+                headers = {"User-Agent": "Mozilla/5.0"}
+                # 최근 약 100일간의 일봉 데이터를 가져오는 네이버 주소
+                url = f"https://naver.com{real_code}&timeframe=day&count=100&requestType=0"
+                res = requests.get(url, headers=headers, timeout=5)
                 
-                df = fdr.DataReader(real_code, start_date, end_date) [1]
+                # 네이버 XML 데이터를 파이썬 데이터로 파싱
+                lines = res.text.split('\n')
+                data_list = []
+                for line in lines:
+                    if 'data' in line:
+                        clean_line = line.split('"')[1]
+                        parts = clean_line.split('|')
+                        # 날짜, 시가, 고가, 저가, 종가, 거래량
+                        data_list.append([parts[0], float(parts[4])])
+                
+                df = pd.DataFrame(data_list, columns=['Date', 'Close'])
                 
                 if df.empty:
                     st.error("❌ 주가 데이터를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.")
                 else:
-                    df = df.copy()
-                    # 컬럼 이름을 대문자로 통일 (Close, Open 등)
-                    if 'Close' not in df.columns and 'Close' in df.columns:
-                        pass
-                    else:
-                        # FinanceDataReader는 한글 또는 대문자로 주기 때문에 강제 지정
-                        if 'Close' not in df.columns:
-                            df['Close'] = df['종가'] if '종가' in df.columns else df.iloc[:, 3]
-
-                    close_series = pd.to_numeric(df['Close'], errors='coerce')
+                    close_series = df['Close']
                     
                     # 기술적 지표 계산 (5일선, 20일선)
                     df['MA5'] = close_series.rolling(window=5).mean()
@@ -77,7 +79,7 @@ if st.button("실시간 분석 실행"):
                     rsi_val = float(latest['RSI'])
                     
                     # 화면 가격 출력
-                    st.metric(label="현재 가격", value=f"{current_price:,.0f} 원")
+                    st.metric(label="현재 가격 (네이버 증권 기준)", value=f"{current_price:,.0f} 원")
                     
                     # AI 매매 알고리즘 결과 리포트
                     if float(latest['MA5']) > float(latest['MA20']) and float(prev['MA5']) <= float(prev['MA20']):
@@ -91,8 +93,9 @@ if st.button("실시간 분석 실행"):
                     else:
                         st.warning("🔮 내일 예측: 현재 힘겨루기 중 (당분간 관망 추천)")
 
-                    # 주가 그래프 그리기
-                    st.line_chart(close_series)
+                    # 주가 그래프 그리기 (날짜를 인덱스로 지정하여 깔끔하게 출력)
+                    df.set_index('Date', inplace=True)
+                    st.line_chart(df['Close'])
                     
                     st.subheader("🤖 AI에게 물어볼 프롬프트")
                     st.code(f"대한민국 {user_search} 종목의 최근 테마주 엮임 현황과 대장주 추천해줘.", language="text")
