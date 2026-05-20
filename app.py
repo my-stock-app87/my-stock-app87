@@ -6,15 +6,11 @@ import feedparser
 from streamlit_autorefresh import st_autorefresh
 
 # =========================
-# 기본 설정
-# =========================
 st.set_page_config(page_title="주식주신 PRO", layout="wide")
 st.title("🔥 주식주신 PRO")
 
 st_autorefresh(interval=5000, key="refresh")
 
-# =========================
-# 종목 리스트
 # =========================
 @st.cache_data(ttl=3600)
 def stock_list():
@@ -28,25 +24,10 @@ def code(name):
     return r["Code"].iloc[0] if not r.empty else None
 
 # =========================
-# 가격 데이터
-# =========================
 @st.cache_data(ttl=5)
 def get_price(c):
     return fdr.DataReader(str(c)).tail(120)
 
-# =========================
-# 뉴스
-# =========================
-def get_news(name):
-    try:
-        url = f"https://news.google.com/rss/search?q={name}+주가&hl=ko&gl=KR&ceid=KR:ko"
-        feed = feedparser.parse(url)
-        return [e.title for e in feed.entries[:5]]
-    except:
-        return []
-
-# =========================
-# 지표 (당일 기준)
 # =========================
 def ind(df):
     df = df.copy()
@@ -72,20 +53,16 @@ def ind(df):
     return df.dropna()
 
 # =========================
-# 분석 문장
-# =========================
 def analysis_text(l):
     if l["Whale"] > 65 and l["Pred"] > 2:
-        return "🚀 세력 유입 강함 → 단기 상승 가능성 높음"
+        return "🚀 세력 유입 강함 → 상승 가능성 높음"
     elif l["Close"] < l["Buy"]:
-        return "📉 눌림 구간 → 분할 매수 가능"
+        return "📉 눌림 구간 → 분할 매수 구간"
     elif l["Close"] > l["Sell"]:
-        return "⚠️ 과열 구간 → 차익 실현 구간"
+        return "⚠️ 과열 구간 → 차익 실현"
     else:
-        return "📊 박스권 → 관망 구간"
+        return "📊 박스권 흐름"
 
-# =========================
-# UI
 # =========================
 name = st.selectbox("종목", names)
 c = code(name)
@@ -109,7 +86,9 @@ if not df.empty:
         color = "red" if diff > 0 else "blue"
         arrow = "▲" if diff > 0 else "▼"
 
+        # =========================
         # 🔥 현재가
+        # =========================
         st.markdown(f"""
         <div style="text-align:center;">
             <div style="font-size:44px;font-weight:900;color:{color};">{price:,}원</div>
@@ -120,33 +99,24 @@ if not df.empty:
         """, unsafe_allow_html=True)
 
         # =========================
-        # 🔥 안 깨지는 1줄 바 (GRID)
+        # 🔥 1줄 HTS 바 (절대 안 깨짐)
         # =========================
         st.markdown(f"""
         <div style="
-            display:grid;
-            grid-template-columns:repeat(6, 1fr);
-            gap:10px;
             background:#f8f9fa;
-            padding:14px;
-            border-radius:14px;
+            padding:12px;
+            border-radius:12px;
             font-weight:800;
-            font-size:13px;
-            text-align:center;
+            font-size:14px;
+            white-space:nowrap;
+            overflow-x:auto;
         ">
-            <div>📈 상승<br><span style="color:#ff4d4d;font-size:16px;">{l['Pred']:.1f}%</span></div>
-
-            <div>🎯 적중률<br><span style="font-size:16px;">{l['Acc']:.1f}%</span></div>
-
-            <div>🐳 세력<br><span style="color:#1e90ff;font-size:16px;">{l['Whale']:.1f}%</span></div>
-
-            <div>🟢 매수<br><span style="color:#00a86b;font-size:16px;">{int(l['Buy']):,}</span></div>
-
-            <div>🔴 매도<br><span style="color:#ff3b3b;font-size:16px;">{int(l['Sell']):,}</span></div>
-
-            <div>📊 전일<br><span style="color:{'red' if diff>0 else 'blue'};font-size:16px;">
-                {diff:+,}
-            </span></div>
+        📈 상승 {l['Pred']:.1f}% ｜ 
+        🎯 적중 {l['Acc']:.1f}% ｜ 
+        🐳 세력 {l['Whale']:.1f}% ｜ 
+        🟢 매수 {int(l['Buy']):,} ｜ 
+        🔴 매도 {int(l['Sell']):,} ｜ 
+        📊 전일 {diff:+,}
         </div>
         """, unsafe_allow_html=True)
 
@@ -167,26 +137,16 @@ if not df.empty:
         # 종합 분석
         # =========================
         st.markdown("### 🧠 종합 분석")
-
         st.markdown(f"""
         <div style="
             padding:12px;
             border-radius:12px;
             background:white;
             border:1px solid #eee;
-            font-size:14px;
-            line-height:1.5;
         ">
         {analysis_text(l)}
         </div>
         """, unsafe_allow_html=True)
-
-        # =========================
-        # 뉴스
-        # =========================
-        st.markdown("### 📰 뉴스")
-        for n in get_news(name):
-            st.write("•", n)
 
     # =========================
     # TAB2 급등주
@@ -195,7 +155,6 @@ if not df.empty:
         st.markdown("### 🚀 급등주 TOP10")
 
         rows = []
-
         for n in names[:10]:
             c = code(n)
             d = ind(get_price(c))
@@ -224,7 +183,6 @@ if not df.empty:
         st.markdown("### 🎯 내일 반등 TOP10")
 
         rows = []
-
         for n in names[:10]:
             c = code(n)
             d = ind(get_price(c))
