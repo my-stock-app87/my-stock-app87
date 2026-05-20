@@ -78,7 +78,7 @@ def get_news(name):
         return [("뉴스 없음", "⚖️ 중립")]
 
 # =====================================================
-# 지표
+# 지표 계산
 # =====================================================
 def ind(df):
     if df is None or df.empty or len(df) < 25:
@@ -90,7 +90,7 @@ def ind(df):
     df["MA20"] = df["Close"].rolling(20).mean()
     df["VOL20"] = df["Volume"].rolling(20).mean()
 
-    # 🐳 세력 진입 (%)
+    # 🐳 세력 진입
     vol_ratio = df["Volume"] / (df["VOL20"] + 1e-10)
     price_momentum = (df["Close"] - df["Open"]) / (df["Open"] + 1e-10)
     trend_strength = (df["Close"] - df["MA5"]) / (df["MA5"] + 1e-10)
@@ -129,28 +129,28 @@ def ind(df):
     return df.dropna()
 
 # =====================================================
-# 차트 설명
+# 분석 함수
 # =====================================================
 def comment(df):
-    latest = df.iloc[-1]
+    l = df.iloc[-1]
 
-    if latest["Close"] > latest["MA5"] > latest["MA20"]:
+    if l["Close"] > l["MA5"] > l["MA20"]:
         trend = "강한 상승"
-    elif latest["Close"] < latest["MA5"] < latest["MA20"]:
+    elif l["Close"] < l["MA5"] < l["MA20"]:
         trend = "하락"
-    elif latest["Close"] > latest["MA5"]:
+    elif l["Close"] > l["MA5"]:
         trend = "단기 상승"
     else:
         trend = "조정"
 
-    whale = latest["Whale"]
+    whale = l["Whale"]
 
     if whale > 70:
-        flow = "세력 강하게 유입"
-        outlook = "추가 상승 가능"
+        flow = "세력 강함"
+        outlook = "상승 가능성 높음"
     elif whale > 40:
         flow = "초기 유입"
-        outlook = "반등 가능"
+        outlook = "반등 가능성"
     else:
         flow = "약함"
         outlook = "관망"
@@ -158,7 +158,7 @@ def comment(df):
     return trend, flow, outlook
 
 # =====================================================
-# 급등주 TOP10
+# 급등주
 # =====================================================
 @st.cache_data(ttl=300)
 def scan_pumps():
@@ -166,8 +166,7 @@ def scan_pumps():
 
     for n in names[:20]:
         c = code(n)
-        df = get_price(c)
-        df = ind(df)
+        df = ind(get_price(c))
 
         if df.empty:
             continue
@@ -188,12 +187,7 @@ def scan_pumps():
                 "급등점수": round(score, 2)
             })
 
-    df = pd.DataFrame(results)
-
-    if df.empty:
-        return df
-
-    return df.sort_values("급등점수", ascending=False).head(10)
+    return pd.DataFrame(results).sort_values("급등점수", ascending=False).head(10)
 
 # =====================================================
 # UI
@@ -201,8 +195,7 @@ def scan_pumps():
 name = st.selectbox("종목 검색", names)
 c = code(name)
 
-df = get_price(c)
-df = ind(df)
+df = ind(get_price(c))
 
 if not df.empty:
     l = df.iloc[-1]
@@ -221,26 +214,43 @@ if not df.empty:
     # TAB1
     # =====================
     with tab1:
-        c1, c2, c3 = st.columns(3)
+        st.markdown("### 📊 종목 핵심 데이터")
 
-        c1.metric("현재가", f"{price:,}원", f"{diff:+,}원")
-        c2.metric("상승률", f"{l['Pred_Return']:.1f}%")
-        c3.metric("적중률", f"{l['Accuracy']:.1f}%")
+        summary_df = pd.DataFrame([{
+            "현재가": f"{price:,}원",
+            "전일 대비": f"{diff:+,}원",
+            "상승 예상": f"{l['Pred_Return']:.1f}%",
+            "적중률": f"{l['Accuracy']:.1f}%",
+            "세력 진입": f"{l['Whale']:.1f}%",
+            "추천 매수": f"{int(l['Buy']):,}원",
+            "추천 매도": f"{int(l['Sell']):,}원"
+        }])
 
-        st.metric("🐳 세력", f"{l['Whale']:.1f}%")
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
-        st.metric("🟢 매수", f"{int(l['Buy']):,}원")
-        st.metric("🔴 매도", f"{int(l['Sell']):,}원")
+        # 🚨 매수/매도 신호
+        buy_signal = l["Whale"] >= 60 and l["Close"] <= l["Buy"] * 1.02
+        sell_signal = l["Close"] >= l["Sell"] * 0.98
 
+        st.markdown("### 🚨 신호")
+
+        if buy_signal:
+            st.success("🟢 지금 매수 타이밍")
+        elif sell_signal:
+            st.error("🔴 매도 구간")
+        else:
+            st.info("⚪ 관망")
+
+        # 🧠 분석
         trend, flow, outlook = comment(df)
 
-        st.markdown("### 📊 분석")
+        st.markdown("### 🧠 분석")
         st.write(trend)
         st.write(flow)
         st.write(outlook)
 
+        # 📰 뉴스
         st.markdown("### 📰 뉴스")
-
         for t, s in get_news(name):
             st.markdown(f"- {s} {t}")
 
