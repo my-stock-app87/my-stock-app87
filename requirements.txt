@@ -1,5 +1,6 @@
 streamlit
 pandas
 numpy
-finance-datareader
+FinanceDataReader
 streamlit-autorefresh
+feedparser
