@@ -246,7 +246,7 @@ with tab1:
                 c1, c2, c3 = st.columns(3)
                 c1.info(f"**적정 매수 추천가:** {bp:,} 원")
                 c2.success(f"**단기 목표 매도가:** {sp:,} 원")
-                c3.light(f"**분석 전략 근거:** {reason}")
+                c3.caption(f"**분석 전략 근거:** {reason}")
             else:
                 st.error("보조지표 연산에 필요한 충분한 거래 데이터 일수가 부족합니다.")
         else:
