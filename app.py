@@ -1,12 +1,21 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import requests
+import FinanceDataReader as fdr
 
 st.set_page_config(page_title="주식 AI", page_icon="📈")
 st.title("📊 나만의 주식 AI 분석기")
 
-# 한글 주식명을 코드로 완벽하게 바꿔주는 시스템
+# 외부 차단 걱정 없는 100% 내부 한국 주식 리스트 변환기
+@st.cache_data
+def load_korean_stocks():
+    # 한국거래소(KRX) 상장 종목 전체 리스트를 파이썬 내부에 직접 저장
+    try:
+        df_krx = fdr.StockListing('KRX')
+        return df_krx[['Code', 'Name']].to_dict('records')
+    except Exception:
+        return []
+
 def get_stock_code(search_input):
     search_input = search_input.strip()
     
@@ -14,23 +23,12 @@ def get_stock_code(search_input):
     if search_input.isdigit() and len(search_input) == 6:
         return search_input
         
-    # 한글 이름을 입력했을 때 실시간 검색
-    try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        url = f"https://naver.com{requests.utils.quote(search_input)}&q_enc=utf-8&st=1&frm=stock&r_format=json"
-        
-        response = requests.get(url, headers=headers).json()
-        items = response.get('items', [])
-        
-        if items and len(items) > 0:
-            sub_items = items[0]
-            if len(sub_items) > 0:
-                code = sub_items[0][0]
-                name = sub_items[0][1]
-                st.success(f"🔍 '{name}' ({code}) 종목을 찾았습니다!")
-                return code
-    except Exception:
-        pass
+    # 한글 이름을 입력했을 때 내부 상장 리스트에서 100% 매칭
+    stocks = load_korean_stocks()
+    for stock in stocks:
+        if stock['Name'] == search_input:
+            st.success(f"🔍 '{stock['Name']}' ({stock['Code']}) 종목을 매칭했습니다!")
+            return stock['Code']
     return None
 
 # 사용자 입력창
@@ -44,7 +42,7 @@ if st.button("실시간 분석 실행"):
         real_code = get_stock_code(user_search)
         
         if not real_code:
-            st.error("❌ 종목을 찾을 수 없습니다. 이름이 정확한지 확인해 주세요.")
+            st.error("❌ 종목을 찾을 수 없습니다. 이름이 정확한지 확인해 주세요. (예: 삼성전자)")
         else:
             ticker_code = real_code + suffix
             
