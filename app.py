@@ -71,7 +71,6 @@ def get_short_term_recommendations(df_all_stocks):
         current_vol = latest["Volume"]
         avg_vol20 = latest["VOL20"]
         
-        # 단기 급등 조건: 거래량 폭발 및 5일선 돌파
         if (current_price > ma5_price) and (current_vol > avg_vol20 * 1.2):
             recommend_list.append({
                 "종목명": name,
@@ -141,12 +140,10 @@ if not df_processed.empty:
     target_sell = int(latest["Target_Sell"])
     rsi_val = latest["RSI"]
     
-    # 🔥 [복구 완료]: 세력 진입 비율 연산 (20일 평균 거래량 대비 당일 거래량 백분율)
     current_vol = latest["Volume"]
     avg_vol20 = latest["VOL20"]
     volume_strength = (current_vol / (avg_vol20 + 1e-10)) * 100
 
-    # 실시간 현재 상태 신호등 진단
     if current_price <= target_buy or rsi_val <= 30:
         status_text = "🔵 적극 매수 타이밍 (저점 분할진입 제안)"
     elif current_price >= target_sell or rsi_val >= 70:
@@ -157,12 +154,10 @@ if not df_processed.empty:
     st.success(f"**AI 진단 결과** ➡️ {status_text}")
     st.markdown("---")
 
-    # 핸드폰 가로폭용 상단 2열 메트릭 배치 (수급 강도 메트릭 정형화)
     m1, m2 = st.columns(2)
     with m1:
         st.metric("현재 가격", f"{current_price:,} 원", f"{price_diff:,} 원 ({price_ratio:.2f}%)")
     with m2:
-        # 🔥 [출력 추가]: 세력 진입 비율 표시
         st.metric("🔥 세력 진입 비율", f"{int(volume_strength)}%", "100% 이상 수급 포착")
 
     m3, m4 = st.columns(2)
@@ -173,23 +168,35 @@ if not df_processed.empty:
 
     st.markdown("---")
 
-    # 📱 [모바일 탭]: 차트 분석실과 수급 추천방 분리
-    tab1, tab2 = st.tabs(["📈 주가 차트 분석", "⚡ AI 단기 급등 추천"])
+    # 📱 [모바일 탭]: 요청하신 번호 순서 형태로 탭 타이틀을 딱 지정했습니다.
+    tab1, tab2 = st.tabs(["1. 종목분석", "2. 단기 급등추천"])
 
     with tab1:
         df_visual = df_processed.tail(period).copy()
-        
-        # 🟢 [날짜 한글 표시]: 차트 X축에 표시될 날짜 포맷을 '00월 00일' 한글 형태로 강제 변형
         df_visual.index = pd.to_datetime(df_visual.index).strftime('%m월 %d일')
         
-        st.markdown("### 📈 주가 및 가격 가이드 채널")
-        st.line_chart(df_visual[["Close", "Target_Buy", "Target_Sell"]])
-
-        st.markdown("### 📊 당일 거래량")
-        st.bar_chart(df_visual["Volume"])
+        # 기본 뷰: 최근 5거래일만 콤팩트하게 표출
+        df_recent_5 = df_visual.tail(5)
         
-        st.markdown("### ⏱️ RSI 심리 지표 추이")
-        st.line_chart(df_visual["RSI"])
+        st.markdown("### 📈 주가 및 가격 가이드 채널")
+        st.line_chart(df_recent_5[["Close", "Target_Buy", "Target_Sell"]])
+
+        st.markdown("### 📊 당일 거래량 (최근 5일)")
+        st.bar_chart(df_recent_5["Volume"])
+        
+        st.markdown("### ⏱️ RSI 심리 지표 추이 (최근 5일)")
+        st.line_chart(df_recent_5["RSI"])
+
+        # 누르면 다 볼 수 있게 확장 셔터 처리
+        with st.expander(f"🔍 {selected_name} 전체 데이터 펼쳐보기 ({period}일 전체 기간)", expanded=False):
+            st.markdown("#### 📅 주가 및 가이드 밴드 전체 흐름")
+            st.line_chart(df_visual[["Close", "Target_Buy", "Target_Sell"]])
+            
+            st.markdown("#### 📊 거래량 전체 흐름")
+            st.bar_chart(df_visual["Volume"])
+            
+            st.markdown("#### ⏱️ RSI 지표 전체 흐름")
+            st.line_chart(df_visual["RSI"])
 
     with tab2:
         st.markdown("### 🎯 오늘 사서 내일 노리는 단기 급등주")
