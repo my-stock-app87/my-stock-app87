@@ -3,17 +3,15 @@ import pandas as pd
 import numpy as np
 import FinanceDataReader as fdr
 
-# =====================================================
-# 설정 (모바일 최적화)
-# =====================================================
+# =========================
+# 설정
+# =========================
 st.set_page_config(page_title="AI STOCK MASTER PRO", layout="centered")
-
 st.title("🔥 AI STOCK MASTER PRO")
-st.caption("모바일 최적화 트레이딩 분석 시스템")
 
-# =====================================================
+# =========================
 # 데이터
-# =====================================================
+# =========================
 @st.cache_data(ttl=300)
 def stock_list():
     return fdr.StockListing("KRX")[["Code", "Name"]]
@@ -29,9 +27,9 @@ def code(name):
 def get_price(c):
     return fdr.DataReader(c)
 
-# =====================================================
+# =========================
 # 지표
-# =====================================================
+# =========================
 def ind(df):
     if len(df) < 20:
         return pd.DataFrame()
@@ -51,9 +49,9 @@ def ind(df):
 
     return df.tail(120).reset_index(drop=True)
 
-# =====================================================
+# =========================
 # 분석 로직
-# =====================================================
+# =========================
 def power(df):
     l = df.iloc[-1]
     s = 0
@@ -79,49 +77,32 @@ def buy_price(df):
     return int(l["MA20"] * 1.01), "MA20 지지"
 
 def sell_price(df):
-    l = df.iloc[-1]
-    return int(l["Close"] * 1.08)
+    return int(df.iloc[-1]["Close"] * 1.08)
 
-# =====================================================
-# 1주 분석
-# =====================================================
-def week(df):
-    d = df.tail(5)
-    return {
-        "1주 최고": int(d["Close"].max()),
-        "1주 최저": int(d["Close"].min()),
-        "변동폭(%)": round((d["Close"].max() - d["Close"].min()) / d["Close"].min() * 100, 2)
-    }
-
-# =====================================================
-# AI 점수
-# =====================================================
 def ai_score(df):
     l = df.iloc[-1]
-    score = 0
+    s = 0
 
     if l["Close"] > l["MA5"]:
-        score += 20
+        s += 20
     if l["Close"] > l["MA20"]:
-        score += 20
+        s += 20
     if l["Volume"] > l["VOL20"] * 2:
-        score += 30
+        s += 30
     if 40 < l["RSI"] < 70:
-        score += 20
+        s += 20
 
-    return min(score, 100)
+    return min(s, 100)
 
-# =====================================================
+# =========================
 # 시장 스캔
-# =====================================================
-def scan():
-    result = []
+# =========================
+def scan_market():
+    res = []
 
-    for n in names[:60]:  # 속도 안정
+    for n in names[:60]:
         try:
-            c = code(n)
-            df = get_price(c)
-
+            df = get_price(code(n))
             if df.empty:
                 continue
 
@@ -129,19 +110,18 @@ def scan():
             if df.empty:
                 continue
 
-            result.append({
+            res.append({
                 "종목": n,
                 "AI점수": ai_score(df)
             })
-
         except:
             continue
 
-    return pd.DataFrame(result).sort_values("AI점수", ascending=False)
+    return pd.DataFrame(res).sort_values("AI점수", ascending=False)
 
-# =====================================================
+# =========================
 # 테마
-# =====================================================
+# =========================
 theme_map = {
     "AI": ["네이버", "카카오", "삼성"],
     "2차전지": ["에코", "포스코", "LG"],
@@ -149,32 +129,32 @@ theme_map = {
     "로봇": ["레인보우", "두산"]
 }
 
-def theme():
+def theme_list():
     out = []
-
     for t, keys in theme_map.items():
         for n in names:
             if any(k in n for k in keys):
                 out.append({"테마": t, "종목": n})
-
     return pd.DataFrame(out)
 
-# =====================================================
-# UI
-# =====================================================
-selected = st.selectbox("📊 종목 선택", names)
+# =========================
+# 탭 UI
+# =========================
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 종목분석",
+    "🚀 급등주",
+    "📊 테마주",
+    "🧠 AI 내일 추천"
+])
 
-if st.button("🔄 새로고침"):
-    st.cache_data.clear()
-    st.rerun()
+# =========================
+# 1️⃣ 종목분석
+# =========================
+with tab1:
+    st.subheader("📊 종목 선택")
+    selected = st.selectbox("종목", names)
 
-# =====================================================
-# 실행
-# =====================================================
-c = code(selected)
-
-if c:
-    df = get_price(c)
+    df = get_price(code(selected))
 
     if not df.empty:
         df = ind(df)
@@ -182,55 +162,47 @@ if c:
         if not df.empty:
             l = df.iloc[-1]
 
-            # =====================
-            # 📱 핵심 카드 UI
-            # =====================
-            st.subheader("📊 현재 상태")
+            st.subheader("💰 실시간 가격")
+            st.metric("현재가", f"{int(l['Close']):,}")
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("현재가", f"{int(l['Close']):,}")
-            col2.metric("RSI", round(l["RSI"], 1))
-            col3.metric("세력", power(df))
+            st.subheader("📈 5일 분석")
+            st.dataframe(df.tail(5)[["Close", "Volume", "RSI"]])
 
-            st.markdown("---")
+            st.subheader("🧠 AI 분석")
+            st.write(f"AI 점수: {ai_score(df)} / 100")
 
-            # =====================
-            # 📈 1주
-            # =====================
-            w = week(df)
+            bp, reason = buy_price(df)
+            sp = sell_price(df)
 
-            st.subheader("📈 1주 분석")
-            st.write(w)
+            st.subheader("📌 매수/매도")
+            st.write(f"- 매수: {bp:,}")
+            st.write(f"- 매도: {sp:,}")
+            st.write(f"- 전략: {reason}")
 
-            st.markdown("---")
+            st.subheader("📊 세력 유입 확률")
+            st.write(f"{power(df)}%")
 
-            # =====================
-            # 📊 5일 데이터
-            # =====================
-            with st.expander("📊 최근 5일 데이터"):
-                st.dataframe(df.tail(5)[["Close", "Volume", "RSI"]])
+# =========================
+# 2️⃣ 급등주
+# =========================
+with tab2:
+    st.subheader("🚀 AI 급등주 TOP 10")
+    st.dataframe(scan_market().head(10), use_container_width=True)
 
-            # =====================
-            # 🧠 AI 해석
-            # =====================
-            with st.expander("🧠 AI 분석"):
-                bp, reason = buy_price(df)
-                sp = sell_price(df)
+# =========================
+# 3️⃣ 테마주
+# =========================
+with tab3:
+    st.subheader("📊 테마 종목")
+    st.dataframe(theme_list(), use_container_width=True)
 
-                st.write(f"""
-- 전략: {reason}
-- 매수가: {bp:,}
-- 목표가: {sp:,}
-                """)
+# =========================
+# 4️⃣ AI 내일 추천
+# =========================
+with tab4:
+    st.subheader("🧠 AI 내일 추천주")
 
-# =====================================================
-# 🚀 급등주
-# =====================================================
-if st.button("🚀 AI 급등주 TOP 10"):
-    st.dataframe(scan().head(10))
+    rec = scan_market().head(5).copy()
+    rec["추천이유"] = "AI 점수 + 거래량 + 추세 기반"
 
-# =====================================================
-# 📊 테마
-# =====================================================
-if st.button("📊 테마주"):
-    st.dataframe(theme())
+    st.dataframe(rec, use_container_width=True)
