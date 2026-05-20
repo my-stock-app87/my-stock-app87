@@ -3,64 +3,45 @@ import pandas as pd
 import numpy as np
 from scipy.stats import pearsonr
 from datetime import datetime
-
-# 설치 필요:
-# pip install streamlit pykrx finance-datareader scipy
-
-from pykrx import stock
 import FinanceDataReader as fdr
 
 # -------------------------------------------------
 # 기본 설정
 # -------------------------------------------------
 st.set_page_config(
-    page_title="👑 주식 AI 통합 예측기",
+    page_title="👑 주식 AI 통합 분석기",
     page_icon="👑",
     layout="wide"
 )
 
-st.title("👑 나만의 주식 AI 통합 예측기")
-st.caption("실시간 한국 전체 주식 분석 시스템")
+st.title("👑 주식 AI 통합 분석기")
+st.caption("전체 한국 주식 실시간 AI 분석 시스템")
 
 # -------------------------------------------------
-# 전체 종목 불러오기
+# 전체 종목 리스트
 # -------------------------------------------------
 @st.cache_data(ttl=3600)
-def get_all_stocks():
+def load_stock_list():
 
-    kospi = stock.get_market_ticker_list(market="KOSPI")
-    kosdaq = stock.get_market_ticker_list(market="KOSDAQ")
+    krx = fdr.StockListing('KRX')
 
-    all_tickers = kospi + kosdaq
+    return krx[['Code', 'Name']]
 
-    rows = []
+stock_df = load_stock_list()
 
-    for ticker in all_tickers:
-        try:
-            rows.append({
-                "code": ticker,
-                "name": stock.get_market_ticker_name(ticker)
-            })
-        except:
-            continue
-
-    return pd.DataFrame(rows)
-
-all_stock_df = get_all_stocks()
-
-stock_names = all_stock_df['name'].tolist()
+stock_names = stock_df['Name'].tolist()
 
 # -------------------------------------------------
 # 종목 코드 찾기
 # -------------------------------------------------
-def get_stock_code(name):
+def get_code(name):
 
-    row = all_stock_df[
-        all_stock_df['name'] == name
+    row = stock_df[
+        stock_df['Name'] == name
     ]
 
     if not row.empty:
-        return row.iloc[0]['code']
+        return row.iloc[0]['Code']
 
     return None
 
@@ -68,7 +49,7 @@ def get_stock_code(name):
 # 주가 데이터
 # -------------------------------------------------
 @st.cache_data(ttl=300)
-def get_stock_df(code):
+def load_price(code):
 
     try:
         df = fdr.DataReader(code)
@@ -84,14 +65,14 @@ def get_stock_df(code):
         return pd.DataFrame()
 
 # -------------------------------------------------
-# 보조지표 계산
+# 보조지표
 # -------------------------------------------------
-def add_indicators(df):
+def add_indicator(df):
 
     df['MA5'] = df['Close'].rolling(5).mean()
     df['MA20'] = df['Close'].rolling(20).mean()
 
-    df['Vol_MA20'] = df['Volume'].rolling(20).mean()
+    df['Vol20'] = df['Volume'].rolling(20).mean()
 
     # RSI
     delta = df['Close'].diff()
@@ -111,27 +92,29 @@ def add_indicators(df):
 # -------------------------------------------------
 # 세력 탐지
 # -------------------------------------------------
-def detect_power(df):
+def detect_signal(df):
 
     latest = df.iloc[-1]
 
-    volume_burst = latest['Volume'] > latest['Vol_MA20'] * 2
-
-    strong_close = latest['Close'] > latest['Open']
+    volume_burst = (
+        latest['Volume'] > latest['Vol20'] * 2
+    )
 
     ma_break = latest['Close'] > latest['MA5']
 
-    if volume_burst and strong_close and ma_break:
-        return "🚨 세력 매집 강하게 의심됩니다."
+    bullish = latest['Close'] > latest['Open']
+
+    if volume_burst and ma_break and bullish:
+        return "🚨 세력 매집 강력 의심"
 
     elif volume_burst:
-        return "🔥 거래량 급증 포착."
+        return "🔥 거래량 급등 포착"
 
     elif latest['RSI'] < 30:
-        return "📉 과매도 구간 접근."
+        return "📉 과매도 구간"
 
     else:
-        return "💤 특별한 수급 이상 없음."
+        return "💤 일반 흐름"
 
 # -------------------------------------------------
 # 세션
@@ -144,9 +127,9 @@ if 'portfolio' not in st.session_state:
 # -------------------------------------------------
 tab0, tab1, tab2, tab3 = st.tabs([
     "💰 내 보유주식",
-    "🔍 1종목 상세분석",
-    "⚖️ 2종목 닮은꼴",
-    "🔮 AI 급등주 추천"
+    "🔍 상세분석",
+    "⚖️ 닮은꼴 분석",
+    "🔮 AI 추천주"
 ])
 
 # =================================================
@@ -154,75 +137,80 @@ tab0, tab1, tab2, tab3 = st.tabs([
 # =================================================
 with tab0:
 
-    st.subheader("💰 내 보유주식 관리")
+    st.subheader("💰 내 보유주식")
 
     with st.expander("➕ 보유주식 추가"):
 
         c1, c2, c3 = st.columns(3)
 
         with c1:
-            selected_stock = st.selectbox(
+
+            selected = st.selectbox(
                 "종목 선택",
                 stock_names
             )
 
         with c2:
+
             buy_price = st.number_input(
                 "매수가",
                 value=50000
             )
 
         with c3:
-            quantity = st.number_input(
+
+            qty = st.number_input(
                 "수량",
                 value=1
             )
 
-        if st.button("📥 포트폴리오 추가"):
+        if st.button("📥 추가"):
 
             st.session_state['portfolio'].append({
-                "name": selected_stock,
-                "buy_price": buy_price,
-                "qty": quantity
+                "name": selected,
+                "buy": buy_price,
+                "qty": qty
             })
 
             st.success("추가 완료")
 
-    # 보유 종목 출력
+    # 출력
     if len(st.session_state['portfolio']) == 0:
 
-        st.info("보유 종목이 없습니다.")
+        st.info("등록된 종목 없음")
 
     else:
 
-        total_asset = 0
+        total = 0
 
-        for idx, item in enumerate(st.session_state['portfolio']):
+        for idx, item in enumerate(
+            st.session_state['portfolio']
+        ):
 
-            code = get_stock_code(item['name'])
+            code = get_code(item['name'])
 
-            df = get_stock_df(code)
+            df = load_price(code)
 
             if df.empty:
                 continue
 
-            df = add_indicators(df)
+            df = add_indicator(df)
 
             latest = df.iloc[-1]
 
-            current_price = latest['Close']
+            now_price = latest['Close']
 
-            eval_amount = current_price * item['qty']
+            eval_price = now_price * item['qty']
 
-            buy_amount = item['buy_price'] * item['qty']
+            buy_total = item['buy'] * item['qty']
 
-            profit = eval_amount - buy_amount
+            profit = eval_price - buy_total
 
-            profit_rate = (
-                profit / (buy_amount + 1e-9)
+            rate = (
+                profit / (buy_total + 1e-9)
             ) * 100
 
-            total_asset += eval_amount
+            total += eval_price
 
             st.markdown("---")
 
@@ -234,33 +222,31 @@ with tab0:
 
             a.metric(
                 "현재가",
-                f"{current_price:,.0f}원"
+                f"{now_price:,.0f}원"
             )
 
             b.metric(
                 "평가금액",
-                f"{eval_amount:,.0f}원"
+                f"{eval_price:,.0f}원"
             )
 
             c.metric(
-                "손익",
-                f"{profit:,.0f}원",
-                f"{profit_rate:.2f}%"
+                "수익률",
+                f"{rate:.2f}%"
             )
 
-            signal = detect_power(df)
-
-            d.write(signal)
+            d.write(
+                detect_signal(df)
+            )
 
             if st.button(
-                f"삭제 {item['name']}",
-                key=idx
+                f"삭제 {idx}"
             ):
                 st.session_state['portfolio'].pop(idx)
                 st.rerun()
 
         st.success(
-            f"💵 총 평가자산: {total_asset:,.0f}원"
+            f"💵 총 평가자산: {total:,.0f}원"
         )
 
 # =================================================
@@ -270,17 +256,17 @@ with tab1:
 
     st.subheader("🔍 1종목 상세분석")
 
-    selected = st.selectbox(
-        "분석할 종목",
+    stock_name = st.selectbox(
+        "종목 선택",
         stock_names,
         key="detail"
     )
 
     if st.button("🔍 분석 시작"):
 
-        code = get_stock_code(selected)
+        code = get_code(stock_name)
 
-        df = get_stock_df(code)
+        df = load_price(code)
 
         if df.empty:
 
@@ -288,7 +274,7 @@ with tab1:
 
         else:
 
-            df = add_indicators(df)
+            df = add_indicator(df)
 
             latest = df.iloc[-1]
 
@@ -297,7 +283,9 @@ with tab1:
                 f"{latest['Close']:,.0f}원"
             )
 
-            st.write(detect_power(df))
+            st.write(
+                detect_signal(df)
+            )
 
             st.line_chart(
                 df.set_index('Date')[
@@ -305,38 +293,42 @@ with tab1:
                 ]
             )
 
-            st.dataframe(df.tail(20))
+            st.dataframe(
+                df.tail(20)
+            )
 
 # =================================================
 # TAB 2
 # =================================================
 with tab2:
 
-    st.subheader("⚖️ 닮은꼴 시뮬레이터")
+    st.subheader("⚖️ 닮은꼴 분석")
 
     c1, c2 = st.columns(2)
 
     with c1:
+
         stock_a = st.selectbox(
             "기준 종목",
             stock_names,
-            key="a"
+            key="A"
         )
 
     with c2:
+
         stock_b = st.selectbox(
             "비교 종목",
             stock_names,
-            key="b"
+            key="B"
         )
 
     if st.button("⚖️ 비교 시작"):
 
-        code_a = get_stock_code(stock_a)
-        code_b = get_stock_code(stock_b)
+        code_a = get_code(stock_a)
+        code_b = get_code(stock_b)
 
-        df_a = get_stock_df(code_a)
-        df_b = get_stock_df(code_b)
+        df_a = load_price(code_a)
+        df_b = load_price(code_b)
 
         if df_a.empty or df_b.empty:
 
@@ -350,33 +342,32 @@ with tab2:
             merged = pd.merge(
                 df_a,
                 df_b,
-                on='Date',
-                suffixes=('_A', '_B')
+                on='Date'
             )
 
             corr, _ = pearsonr(
-                merged['Close_A'],
-                merged['Close_B']
+                merged['Close_x'],
+                merged['Close_y']
             )
 
-            similarity = (
+            sim = (
                 (corr + 1) / 2
             ) * 100
 
             st.metric(
-                "차트 유사도",
-                f"{similarity:.2f}%"
+                "유사도",
+                f"{sim:.2f}%"
             )
 
             merged['A'] = (
-                merged['Close_A']
-                / merged['Close_A'].iloc[0]
+                merged['Close_x']
+                / merged['Close_x'].iloc[0]
                 - 1
             ) * 100
 
             merged['B'] = (
-                merged['Close_B']
-                / merged['Close_B'].iloc[0]
+                merged['Close_y']
+                / merged['Close_y'].iloc[0]
                 - 1
             ) * 100
 
@@ -391,7 +382,7 @@ with tab2:
 # =================================================
 with tab3:
 
-    st.subheader("🔮 AI 급등주 추천")
+    st.subheader("🔮 AI 추천 급등주")
 
     now = datetime.now()
 
@@ -399,31 +390,29 @@ with tab3:
         f"현재 시간: {now.strftime('%Y-%m-%d %H:%M:%S')}"
     )
 
-    if now.hour >= 12:
-        st.success(
-            "🔥 오후 12시 이후 AI 추천 활성화"
-        )
-
     if st.button("🔮 AI 추천 시작"):
 
         result = []
 
-        tickers = stock.get_market_ticker_list(
-            market="ALL"
-        )
+        sample = stock_df.sample(200)
 
         progress = st.progress(0)
 
-        for idx, ticker in enumerate(tickers[:200]):
+        for idx, row in enumerate(
+            sample.iterrows()
+        ):
 
             try:
 
-                df = get_stock_df(ticker)
+                code = row[1]['Code']
+                name = row[1]['Name']
+
+                df = load_price(code)
 
                 if len(df) < 30:
                     continue
 
-                df = add_indicators(df)
+                df = add_indicator(df)
 
                 latest = df.iloc[-1]
 
@@ -431,7 +420,7 @@ with tab3:
 
                 # 거래량 폭발
                 if latest['Volume'] > (
-                    latest['Vol_MA20'] * 3
+                    latest['Vol20'] * 3
                 ):
                     score += 40
 
@@ -450,10 +439,12 @@ with tab3:
                 if score >= 70:
 
                     result.append({
-                        "종목": stock.get_market_ticker_name(ticker),
+                        "종목": name,
                         "현재가": int(latest['Close']),
                         "AI점수": score,
-                        "RSI": round(latest['RSI'], 1)
+                        "RSI": round(
+                            latest['RSI'], 1
+                        )
                     })
 
             except:
@@ -465,9 +456,7 @@ with tab3:
 
         if len(result) == 0:
 
-            st.warning(
-                "조건 만족 종목 없음"
-            )
+            st.warning("추천 종목 없음")
 
         else:
 
@@ -482,4 +471,6 @@ with tab3:
                 "🎯 AI 추천 완료"
             )
 
-            st.dataframe(result_df.head(20))
+            st.dataframe(
+                result_df.head(20)
+            )
