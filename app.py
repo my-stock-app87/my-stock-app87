@@ -8,19 +8,9 @@ from streamlit_autorefresh import st_autorefresh
 # 설정
 # =====================================================
 st.set_page_config(page_title="주식주신 PRO", layout="wide")
-
 st.title("🔥 주식주신 PRO")
 
-st_autorefresh(interval=5000, key="global_refresh")
-
-# =====================================================
-# 스타일
-# =====================================================
-st.markdown("""
-<style>
-.stMetric {background:#f8f9fa;padding:12px;border-radius:12px;}
-</style>
-""", unsafe_allow_html=True)
+st_autorefresh(interval=5000, key="refresh")
 
 # =====================================================
 # 종목 리스트
@@ -58,7 +48,7 @@ def get_price(c):
         return pd.DataFrame()
 
 # =====================================================
-# 지표
+# 지표 계산
 # =====================================================
 def ind(df):
     if df is None or df.empty or len(df) < 25:
@@ -89,7 +79,7 @@ def ind(df):
     df["AI_Buy"] = df["MA20"] - (std20 * 1.2)
     df["AI_Sell"] = df["MA20"] + (std20 * 1.2)
 
-    # 📈 예상 상승률
+    # 📈 상승률
     std5 = df["Close"].rolling(5).std()
     df["Pred_Return"] = (df["Whale_Entry"] / 100) * (std5 / (df["Close"] + 1e-10)) * 100
     df["Pred_Return"] = np.clip(df["Pred_Return"], 0.5, 28.5)
@@ -116,7 +106,37 @@ def ind(df):
     return df.dropna()
 
 # =====================================================
-# 급등 + 반등 TOP10
+# 차트 설명 AI
+# =====================================================
+def make_comment(df, name):
+    latest = df.iloc[-1]
+
+    trend = "횡보"
+    if latest["Close"] > latest["MA5"] > latest["MA20"]:
+        trend = "강한 상승 추세"
+    elif latest["Close"] < latest["MA5"] < latest["MA20"]:
+        trend = "하락 추세"
+    elif latest["Close"] > latest["MA5"]:
+        trend = "단기 상승 흐름"
+    else:
+        trend = "조정 구간"
+
+    whale = latest["Whale_Entry"]
+
+    if whale > 70:
+        flow = "세력 유입 강함"
+        outlook = "추가 상승 가능성이 높은 구간"
+    elif whale > 40:
+        flow = "수급 초기 유입"
+        outlook = "눌림 후 반등 가능성"
+    else:
+        flow = "수급 약함"
+        outlook = "관망 구간"
+
+    return trend, flow, outlook
+
+# =====================================================
+# 내일 반등 TOP10 (가격 3일 포함)
 # =====================================================
 @st.cache_data(ttl=600)
 def scan_market_signals():
@@ -134,7 +154,7 @@ def scan_market_signals():
             continue
 
         df = fdr.DataReader(str(c)).tail(120)
-        if df is None or len(df) < 25:
+        if df is None or len(df) < 30:
             continue
 
         df_p = ind(df)
@@ -143,7 +163,11 @@ def scan_market_signals():
 
         latest = df_p.iloc[-1]
 
-        price = int(latest["Close"])
+        # 📊 3일 가격
+        close_today = int(df_p.iloc[-1]["Close"])
+        close_yesterday = int(df_p.iloc[-2]["Close"])
+        close_2days = int(df_p.iloc[-3]["Close"])
+
         score = float(latest["Stock_Score"])
         whale = float(latest["Whale_Entry"])
 
@@ -155,7 +179,9 @@ def scan_market_signals():
 
         results.append({
             "종목명": name,
-            "현재가": f"{price:,}원",
+            "2일전": f"{close_2days:,}원",
+            "전일": f"{close_yesterday:,}원",
+            "현재가": f"{close_today:,}원",
             "세력진입": f"{whale:.1f}%",
             "반등점수": round(rebound_score, 2)
         })
@@ -170,9 +196,10 @@ def scan_market_signals():
 # =====================================================
 # UI
 # =====================================================
-selected_name = st.selectbox("", names)
+selected_name = st.selectbox("종목 검색", names)
 
 selected_code = code(selected_name)
+
 df_raw = get_price(selected_code)
 df = ind(df_raw)
 
@@ -182,7 +209,6 @@ if not df.empty:
 
     price = int(latest["Close"])
     diff = price - int(prev["Close"])
-    ratio = (diff / int(prev["Close"])) * 100
 
     pump_df = scan_market_signals()
 
@@ -197,19 +223,22 @@ if not df.empty:
 
         c1.metric("현재가", f"{price:,}원", f"{diff:+,}원")
         c2.metric("예상 상승률", f"{latest['Pred_Return']:.1f}%")
-        c3.metric("상승 적중률", f"{latest['Pred_Accuracy']:.1f}%")
+        c3.metric("적중률", f"{latest['Pred_Accuracy']:.1f}%")
 
-        st.metric("🐳 세력 진입 확률", f"{latest['Whale_Entry']:.1f}%")
+        st.metric("🐳 세력 진입", f"{latest['Whale_Entry']:.1f}%")
 
-        st.markdown(f"""
-        ### 종합 점수: {latest['Stock_Score']:.1f}/100
-        """)
+        trend, flow, outlook = make_comment(df, selected_name)
+
+        st.markdown("### 📊 차트 분석")
+        st.write(f"추세: {trend}")
+        st.write(f"수급: {flow}")
+        st.write(f"전망: {outlook}")
 
     with tab2:
         st.dataframe(pump_df, use_container_width=True)
 
     with tab3:
-        st.markdown("🎯 내일 반등 예상 TOP 10")
+        st.markdown("### 🎯 내일 반등 예상 TOP10")
         st.dataframe(pump_df, use_container_width=True)
 
 else:
