@@ -4,12 +4,16 @@ import numpy as np
 from datetime import datetime
 import FinanceDataReader as fdr
 
-st.set_page_config(page_title="AI TRADING MASTER", layout="wide")
+st.set_page_config(page_title="AI STOCK MASTER", layout="wide")
 
-today = datetime.now().strftime("%Y-%m-%d")
+# =====================================================
+# 📅 한글 날짜
+# =====================================================
+now = datetime.now()
+today = f"{now.year}년 {now.month}월 {now.day}일"
 
-st.title("🔥 AI TRADING MASTER PRO")
-st.caption(f"실전 매수/매도 가격 + 설명 시스템 | {today}")
+st.title("🔥 AI STOCK MASTER PRO")
+st.caption(f"실전 매수/매도 추천 시스템 | {today}")
 
 # =====================================================
 # 데이터
@@ -52,19 +56,16 @@ def ind(df):
     return df.dropna().reset_index(drop=True)
 
 # =====================================================
-# 🔥 핵심: 매수 가격 계산 (이게 중요)
+# 🔥 매수 가격
 # =====================================================
 def buy_price(df):
     l = df.iloc[-1]
 
-    support = df["MA20"].iloc[-1]
-    rsi = l["RSI"]
-
-    if rsi < 30:
-        return int(l["Close"] * 0.99), "🔥 과매도 → 즉시 분할매수 구간"
+    if l["RSI"] < 30:
+        return int(l["Close"] * 0.99), "🔥 과매도 반등 구간 → 즉시 분할매수"
     if l["Close"] > l["MA5"] and l["Volume"] > l["VOL20"]:
-        return int(l["Close"] * 1.00), "🟢 추세 상승 → 눌림 매수"
-    return int(support * 1.01), "⚠️ 지지선 근처 대기 매수"
+        return int(l["Close"]), "🟢 상승추세 → 눌림목 매수"
+    return int(l["MA20"] * 1.01), "⚠️ MA20 지지 확인 후 매수"
 
 # =====================================================
 # 매도 가격
@@ -92,83 +93,76 @@ def power(df):
     return min(s, 100)
 
 # =====================================================
-# 설명 (진짜 중요)
+# 설명
 # =====================================================
-def explain(df, stock):
+def explain(df, name):
     l = df.iloc[-1]
     p = power(df)
 
-    text = f"""
-📊 [{stock}] 현재 상태 분석
+    return f"""
+📊 {name} 분석 리포트 ({today})
 
-- 현재가 흐름: {int(l['Close'])}원 기준 단기 변동성 구간
-- RSI: {l['RSI']:.1f} → {'과매도 반등 구간' if l['RSI'] < 30 else '중립~과열 구간'}
-- 거래량: {'급증' if l['Volume'] > l['VOL20'] else '일반 흐름'}
+- 현재가: {int(l['Close'])}원
+- RSI: {l['RSI']:.1f}
+- 거래량: {"급증" if l["Volume"] > l["VOL20"] else "보통"}
 
 🔥 세력 개입 확률: {p}%
 
 👉 해석:
-{'세력이 들어오는 초기 수급 가능성이 높음' if p > 70 else '개인 매매 중심 흐름'}
+{'세력 유입 가능성 높음' if p > 70 else '개인 매매 중심 흐름'}
 
 📌 전략:
-- 매수: 눌림 또는 MA20 근처
-- 매도: +8% 구간 또는 거래량 폭발 시
+- 매수: MA20 근처 또는 눌림
+- 매도: +8% 또는 거래량 급증 구간
 """
-    return text
 
 # =====================================================
-# UI
+# 🚀 AI 추천 종목 (핵심)
 # =====================================================
-tab1, tab2 = st.tabs(["💰 보유종목", "🔍 상세분석"])
+def recommend():
+    results = []
 
-# =====================================================
-# TAB 1 (실제 매수/매도 가격)
-# =====================================================
-with tab1:
-
-    st.subheader("💰 내 보유종목")
-
-    name = st.selectbox("종목", names, key="p1")
-    buy = st.number_input("매수가", value=50000)
-    qty = st.number_input("수량", value=1)
-
-    if "pf" not in st.session_state:
-        st.session_state["pf"] = []
-
-    if st.button("추가"):
-        st.session_state["pf"].append({"name": name, "buy": buy, "qty": qty})
-
-    for i, item in enumerate(st.session_state["pf"]):
-
-        df = price(code(item["name"]))
+    for name in names[:40]:  # 속도 제한
+        df = price(code(name))
         if df.empty:
             continue
 
         df = ind(df)
+
         l = df.iloc[-1]
 
-        cur = l["Close"]
-        profit = (cur - item["buy"]) / item["buy"] * 100
+        score = 0
+        if l["Volume"] > l["VOL20"] * 2:
+            score += 40
+        if l["Close"] > l["MA5"]:
+            score += 20
+        if l["RSI"] < 70:
+            score += 20
+        if l["Close"] > l["MA20"]:
+            score += 20
 
-        bp, reason = buy_price(df)
-        sp = sell_price(df)
+        if score >= 70:
+            bp, _ = buy_price(df)
+            sp = sell_price(df)
 
-        st.markdown(f"## 📦 {item['name']}")
+            results.append((name, score, bp, sp))
 
-        st.metric("현재가", f"{cur:,.0f}원")
-        st.metric("수익률", f"{profit:.2f}%")
-
-        st.success(f"🟢 추천 매수 가격: {bp:,}원")
-        st.error(f"🔴 목표 매도 가격: {sp:,}원")
-
-        st.info(f"📌 매수 이유: {reason}")
+    return sorted(results, key=lambda x: x[1], reverse=True)
 
 # =====================================================
-# TAB 2 (상세 분석 + 설명)
+# TAB
 # =====================================================
-with tab2:
+tab1, tab2 = st.tabs([
+    "🔍 상세분석",
+    "🚀 AI 추천"
+])
 
-    stock = st.selectbox("종목 선택", names, key="d1")
+# =====================================================
+# 상세분석
+# =====================================================
+with tab1:
+
+    stock = st.selectbox("종목 선택", names)
 
     if st.button("분석 실행"):
 
@@ -183,8 +177,34 @@ with tab2:
             st.metric("현재가", f"{df.iloc[-1]['Close']:,.0f}")
             st.metric("세력확률", f"{power(df)}%")
 
-            st.subheader("📌 AI 상세 설명")
+            bp, reason = buy_price(df)
+
+            st.success(f"🟢 추천 매수 가격: {bp:,}원")
+            st.error(f"🔴 목표 매도 가격: {sell_price(df):,}원")
+
+            st.info(f"📌 매수 이유: {reason}")
+
             st.write(explain(df, stock))
 
-            st.subheader("📈 차트")
             st.line_chart(df.set_index("Date")[["Close", "MA5", "MA20"]])
+
+# =====================================================
+# AI 추천
+# =====================================================
+with tab2:
+
+    st.subheader(f"🚀 AI 추천 TOP 종목 ({today})")
+
+    rec = recommend()
+
+    if not rec:
+        st.warning("추천 없음")
+    else:
+        for r in rec[:10]:
+
+            st.markdown("---")
+
+            st.write(f"📈 종목: {r[0]}")
+            st.write(f"🔥 점수: {r[1]}점")
+            st.write(f"🟢 추천 매수가: {r[2]:,}원")
+            st.write(f"🔴 목표 매도가: {r[3]:,}원")
