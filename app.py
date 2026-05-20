@@ -6,7 +6,7 @@ import feedparser
 from streamlit_autorefresh import st_autorefresh
 
 # =====================================================
-# 설정
+# 기본 설정
 # =====================================================
 st.set_page_config(page_title="주식주신 PRO", layout="wide")
 st.title("🔥 주식주신 PRO")
@@ -73,11 +73,7 @@ def get_news(name):
         url = f"https://news.google.com/rss/search?q={name}+주가&hl=ko&gl=KR&ceid=KR:ko"
         feed = feedparser.parse(url)
 
-        news = []
-        for e in feed.entries[:5]:
-            news.append((e.title, sentiment(e.title)))
-
-        return news
+        return [(e.title, sentiment(e.title)) for e in feed.entries[:5]]
     except:
         return [("뉴스 없음", "⚖️ 중립")]
 
@@ -94,7 +90,7 @@ def ind(df):
     df["MA20"] = df["Close"].rolling(20).mean()
     df["VOL20"] = df["Volume"].rolling(20).mean()
 
-    # 🐳 세력 진입 (0~100%)
+    # 🐳 세력 진입 (%)
     vol_ratio = df["Volume"] / (df["VOL20"] + 1e-10)
     price_momentum = (df["Close"] - df["Open"]) / (df["Open"] + 1e-10)
     trend_strength = (df["Close"] - df["MA5"]) / (df["MA5"] + 1e-10)
@@ -126,6 +122,10 @@ def ind(df):
 
     df["Score"] = np.clip(vol_score + ma_align + body, 10, 100)
 
+    # 🎯 추천 매수/매도
+    df["Buy"] = df["MA20"] - (df["Close"].rolling(20).std() * 0.8)
+    df["Sell"] = df["MA20"] + (df["Close"].rolling(20).std() * 0.8)
+
     return df.dropna()
 
 # =====================================================
@@ -135,98 +135,139 @@ def comment(df):
     latest = df.iloc[-1]
 
     if latest["Close"] > latest["MA5"] > latest["MA20"]:
-        trend = "강한 상승 추세"
+        trend = "강한 상승"
     elif latest["Close"] < latest["MA5"] < latest["MA20"]:
-        trend = "하락 추세"
+        trend = "하락"
     elif latest["Close"] > latest["MA5"]:
         trend = "단기 상승"
     else:
-        trend = "조정 구간"
+        trend = "조정"
 
     whale = latest["Whale"]
 
     if whale > 70:
-        flow = "세력 유입 강함"
-        outlook = "추가 상승 가능성 높음"
+        flow = "세력 강하게 유입"
+        outlook = "추가 상승 가능"
     elif whale > 40:
-        flow = "초기 수급 유입"
-        outlook = "반등 가능성 존재"
+        flow = "초기 유입"
+        outlook = "반등 가능"
     else:
-        flow = "수급 약함"
-        outlook = "관망 구간"
+        flow = "약함"
+        outlook = "관망"
 
     return trend, flow, outlook
+
+# =====================================================
+# 급등주 TOP10
+# =====================================================
+@st.cache_data(ttl=300)
+def scan_pumps():
+    results = []
+
+    for n in names[:20]:
+        c = code(n)
+        df = get_price(c)
+        df = ind(df)
+
+        if df.empty:
+            continue
+
+        l = df.iloc[-1]
+        p = df.iloc[-2]
+
+        change = (l["Close"] - p["Close"]) / p["Close"] * 100
+
+        score = l["Whale"] * 0.5 + l["Score"] * 0.3 + max(change * 10, 0)
+
+        if l["Whale"] > 60 and change > 1:
+            results.append({
+                "종목": n,
+                "현재가": f"{int(l['Close']):,}원",
+                "등락률": f"{change:.2f}%",
+                "세력": f"{l['Whale']:.1f}%",
+                "급등점수": round(score, 2)
+            })
+
+    df = pd.DataFrame(results)
+
+    if df.empty:
+        return df
+
+    return df.sort_values("급등점수", ascending=False).head(10)
 
 # =====================================================
 # UI
 # =====================================================
 name = st.selectbox("종목 검색", names)
-code_ = code(name)
+c = code(name)
 
-df = get_price(code_)
+df = get_price(c)
 df = ind(df)
 
 if not df.empty:
-    latest = df.iloc[-1]
-    prev = df.iloc[-2]
+    l = df.iloc[-1]
+    p = df.iloc[-2]
 
-    price = int(latest["Close"])
-    diff = price - int(prev["Close"])
+    price = int(l["Close"])
+    diff = price - int(p["Close"])
 
     tab1, tab2, tab3 = st.tabs([
         "📊 종목분석",
         "🚀 급등주",
-        "🎯 내일 반등 TOP10"
+        "🎯 내일 반등"
     ])
 
-    # =========================
+    # =====================
     # TAB1
-    # =========================
+    # =====================
     with tab1:
         c1, c2, c3 = st.columns(3)
 
         c1.metric("현재가", f"{price:,}원", f"{diff:+,}원")
-        c2.metric("상승률", f"{latest['Pred_Return']:.1f}%")
-        c3.metric("적중률", f"{latest['Accuracy']:.1f}%")
+        c2.metric("상승률", f"{l['Pred_Return']:.1f}%")
+        c3.metric("적중률", f"{l['Accuracy']:.1f}%")
 
-        st.metric("🐳 세력 진입", f"{latest['Whale']:.1f}%")
+        st.metric("🐳 세력", f"{l['Whale']:.1f}%")
+
+        st.metric("🟢 매수", f"{int(l['Buy']):,}원")
+        st.metric("🔴 매도", f"{int(l['Sell']):,}원")
 
         trend, flow, outlook = comment(df)
 
-        st.markdown("### 📊 차트 분석")
+        st.markdown("### 📊 분석")
         st.write(trend)
         st.write(flow)
         st.write(outlook)
 
         st.markdown("### 📰 뉴스")
 
-        news = get_news(name)
-        for t, s in news:
+        for t, s in get_news(name):
             st.markdown(f"- {s} {t}")
 
-    # =========================
-    # TAB2 (간단 유지)
-    # =========================
+    # =====================
+    # TAB2
+    # =====================
     with tab2:
-        st.info("급등주 기능 확장 가능 (현재 간단 버전)")
+        st.markdown("### 🚀 급등주 TOP10")
+        st.dataframe(scan_pumps(), use_container_width=True)
 
-    # =========================
+    # =====================
     # TAB3
-    # =========================
+    # =====================
     with tab3:
         st.markdown("### 🎯 내일 반등 TOP10")
 
-        leaders = names[:10]
         rows = []
 
-        for n in leaders:
+        for n in names[:10]:
             c = code(n)
-            d = get_price(c)
-            d = ind(d)
+            d = ind(get_price(c))
+
             if d.empty:
                 continue
 
             l = d.iloc[-1]
+
             rows.append({
                 "종목": n,
                 "현재가": f"{int(l['Close']):,}원",
