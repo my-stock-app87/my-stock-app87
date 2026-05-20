@@ -2,12 +2,16 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import FinanceDataReader as fdr
+from streamlit_autorefresh import st_autorefresh
 
 # =========================
 # 설정
 # =========================
 st.set_page_config(page_title="AI STOCK MASTER PRO", layout="centered")
 st.title("🔥 AI STOCK MASTER PRO")
+
+# 🔥 5초마다 자동 새로고침 (실시간 가격용)
+st_autorefresh(interval=5000, key="refresh")
 
 # =========================
 # 데이터
@@ -25,7 +29,7 @@ def code(name):
         return None
     return row.iloc[0]["Code"]
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=60)
 def get_price(c):
     try:
         if c is None:
@@ -61,10 +65,10 @@ def ind(df):
 
     df = df.dropna()
 
-    return df.tail(120).reset_index(drop=True)
+    return df.tail(120)
 
 # =========================
-# 추천점수
+# 추천 점수
 # =========================
 def recommendation_score(df):
     l = df.iloc[-1]
@@ -82,24 +86,24 @@ def recommendation_score(df):
     return min(s, 100)
 
 # =========================
-# 내일 상승 점수
+# 상승 점수
 # =========================
 def tomorrow_up_probability(df):
     l = df.iloc[-1]
-    score = 0
+    s = 0
 
     if l["Close"] > l["MA5"]:
-        score += 25
+        s += 25
     if l["Close"] > l["MA20"]:
-        score += 20
+        s += 20
     if l["Volume"] > l["VOL20"] * 1.5:
-        score += 20
+        s += 20
     if 40 < l["RSI"] < 70:
-        score += 20
+        s += 20
     if df["Close"].iloc[-1] > df["Close"].iloc[-2]:
-        score += 15
+        s += 15
 
-    return min(score, 95)
+    return min(s, 95)
 
 # =========================
 # 세력 점수
@@ -132,17 +136,17 @@ def sell_price(df):
     return int(df.iloc[-1]["Close"] * 1.08)
 
 # =========================
-# 5일 데이터
+# 🔥 5일 상세 (날짜 FIX 완료)
 # =========================
 def five_day(df):
     if df is None or df.empty:
         return pd.DataFrame()
 
-    d = df.tail(5).copy().reset_index()
-    date_col = d.columns[0]
+    d = df.tail(5).copy()
+    d.index = pd.to_datetime(d.index)
 
     return pd.DataFrame({
-        "날짜": pd.to_datetime(d[date_col]).dt.strftime("%Y-%m-%d"),
+        "날짜": d.index.strftime("%Y-%m-%d"),
         "시가": d["Open"].astype(int),
         "고가": d["High"].astype(int),
         "저가": d["Low"].astype(int),
@@ -204,14 +208,10 @@ def theme_list():
                 out.append({"테마": t, "종목": n})
 
     df = pd.DataFrame(out)
-
-    if df.empty:
-        return df
-
     return df.drop_duplicates()
 
 # =========================
-# 탭 UI
+# 탭
 # =========================
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 종목분석",
@@ -221,7 +221,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 # =========================
-# 1. 종목분석
+# 1. 종목분석 (🔥 실시간 가격 포함)
 # =========================
 with tab1:
     selected = st.selectbox("종목 선택", names)
@@ -232,13 +232,13 @@ with tab1:
         st.error("종목 코드 없음")
         st.stop()
 
-    df = get_price(stock_code)
+    df_raw = get_price(stock_code)
 
-    if df.empty:
+    if df_raw.empty:
         st.warning("데이터 없음")
         st.stop()
 
-    df = ind(df)
+    df = ind(df_raw)
 
     if df.empty or len(df) < 2:
         st.warning("데이터 부족")
@@ -246,11 +246,15 @@ with tab1:
 
     l = df.iloc[-1]
 
+    # 🔥 실시간 현재가 (매 5초 자동 갱신)
+    realtime_df = fdr.DataReader(stock_code)
+    realtime_price = realtime_df["Close"].iloc[-1] if not realtime_df.empty else l["Close"]
+
     st.subheader("💰 실시간 가격")
-    st.metric("현재가", f"{int(l['Close']):,}")
+    st.metric("현재가", f"{int(realtime_price):,}")
 
     st.subheader("📈 5일 상세 분석")
-    st.dataframe(five_day(df), use_container_width=True)
+    st.dataframe(five_day(df_raw), use_container_width=True)
 
     st.subheader("🧠 추천점수")
     st.metric("점수", f"{recommendation_score(df)} / 100")
