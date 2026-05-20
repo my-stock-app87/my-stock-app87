@@ -21,17 +21,29 @@ names = df_stock["Name"].tolist()
 
 def code(name):
     row = df_stock[df_stock["Name"] == name]
-    return row.iloc[0]["Code"] if not row.empty else None
+    if row.empty:
+        return None
+    return row.iloc[0]["Code"]
 
 @st.cache_data(ttl=120)
 def get_price(c):
-    return fdr.DataReader(c)
+    try:
+        if c is None:
+            return pd.DataFrame()
+
+        df = fdr.DataReader(c)
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        return df
+    except:
+        return pd.DataFrame()
 
 # =========================
 # 지표
 # =========================
 def ind(df):
-    if len(df) < 20:
+    if df is None or df.empty or len(df) < 20:
         return pd.DataFrame()
 
     df = df.copy()
@@ -44,13 +56,15 @@ def ind(df):
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
 
-    rs = gain.rolling(14).mean() / (loss.rolling(14).mean() + 1e-9)
+    rs = gain.ewm(alpha=1/14).mean() / (loss.ewm(alpha=1/14).mean() + 1e-9)
     df["RSI"] = 100 - (100 / (1 + rs))
+
+    df = df.dropna()
 
     return df.tail(120).reset_index(drop=True)
 
 # =========================
-# 추천점수 (구 AI점수)
+# 추천점수
 # =========================
 def recommendation_score(df):
     l = df.iloc[-1]
@@ -68,11 +82,10 @@ def recommendation_score(df):
     return min(s, 100)
 
 # =========================
-# 내일 상승 확률
+# 내일 상승 점수
 # =========================
 def tomorrow_up_probability(df):
     l = df.iloc[-1]
-
     score = 0
 
     if l["Close"] > l["MA5"]:
@@ -89,7 +102,7 @@ def tomorrow_up_probability(df):
     return min(score, 95)
 
 # =========================
-# 매수/매도/세력
+# 세력 점수
 # =========================
 def power(df):
     l = df.iloc[-1]
@@ -119,14 +132,17 @@ def sell_price(df):
     return int(df.iloc[-1]["Close"] * 1.08)
 
 # =========================
-# 5일 분석 (핵심)
+# 5일 데이터
 # =========================
 def five_day(df):
-    d = df.tail(5).copy()
-    d = d.reset_index()
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    d = df.tail(5).copy().reset_index()
+    date_col = d.columns[0]
 
     return pd.DataFrame({
-        "날짜": pd.to_datetime(d["Date"]).dt.strftime("%Y-%m-%d"),
+        "날짜": pd.to_datetime(d[date_col]).dt.strftime("%Y-%m-%d"),
         "시가": d["Open"].astype(int),
         "고가": d["High"].astype(int),
         "저가": d["Low"].astype(int),
@@ -142,12 +158,16 @@ def scan_market():
 
     for n in names[:60]:
         try:
-            df = get_price(code(n))
+            c = code(n)
+            if c is None:
+                continue
+
+            df = get_price(c)
             if df.empty:
                 continue
 
             df = ind(df)
-            if df.empty:
+            if df.empty or len(df) < 2:
                 continue
 
             res.append({
@@ -158,7 +178,12 @@ def scan_market():
         except:
             continue
 
-    return pd.DataFrame(res).sort_values("추천점수", ascending=False)
+    df = pd.DataFrame(res)
+
+    if df.empty:
+        return df
+
+    return df.sort_values("추천점수", ascending=False)
 
 # =========================
 # 테마주
@@ -172,11 +197,18 @@ theme_map = {
 
 def theme_list():
     out = []
+
     for t, keys in theme_map.items():
         for n in names:
             if any(k in n for k in keys):
                 out.append({"테마": t, "종목": n})
-    return pd.DataFrame(out)
+
+    df = pd.DataFrame(out)
+
+    if df.empty:
+        return df
+
+    return df.drop_duplicates()
 
 # =========================
 # 탭 UI
@@ -189,71 +221,83 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 # =========================
-# 1️⃣ 종목분석
+# 1. 종목분석
 # =========================
 with tab1:
     selected = st.selectbox("종목 선택", names)
 
-    df = get_price(code(selected))
+    stock_code = code(selected)
 
-    if not df.empty:
-        df = ind(df)
+    if stock_code is None:
+        st.error("종목 코드 없음")
+        st.stop()
 
-        if not df.empty:
-            l = df.iloc[-1]
+    df = get_price(stock_code)
 
-            st.subheader("💰 실시간 가격")
-            st.metric("현재가", f"{int(l['Close']):,}")
+    if df.empty:
+        st.warning("데이터 없음")
+        st.stop()
 
-            st.subheader("📈 5일 상세 분석")
-            st.dataframe(five_day(df), use_container_width=True)
+    df = ind(df)
 
-            st.subheader("🧠 추천점수")
-            st.metric("점수", f"{recommendation_score(df)} / 100")
+    if df.empty or len(df) < 2:
+        st.warning("데이터 부족")
+        st.stop()
 
-            st.subheader("🧠 내일 상승 확률")
-            prob = tomorrow_up_probability(df)
-            st.metric("확률", f"{prob}%")
+    l = df.iloc[-1]
 
-            if prob >= 80:
-                st.success("🔥 강한 상승 가능성")
-            elif prob >= 60:
-                st.info("📈 상승 가능성 있음")
-            else:
-                st.warning("⚠️ 관망")
+    st.subheader("💰 실시간 가격")
+    st.metric("현재가", f"{int(l['Close']):,}")
 
-            st.subheader("💰 매수/매도")
-            bp, reason = buy_price(df)
-            sp = sell_price(df)
+    st.subheader("📈 5일 상세 분석")
+    st.dataframe(five_day(df), use_container_width=True)
 
-            st.write(f"- 매수: {bp:,}")
-            st.write(f"- 매도: {sp:,}")
-            st.write(f"- 전략: {reason}")
+    st.subheader("🧠 추천점수")
+    st.metric("점수", f"{recommendation_score(df)} / 100")
 
-            st.subheader("📊 세력 점수")
-            st.write(f"{power(df)}%")
+    st.subheader("🧠 내일 상승 점수")
+    prob = tomorrow_up_probability(df)
+    st.metric("점수", f"{prob}%")
+
+    if prob >= 80:
+        st.success("🔥 강한 상승 가능성")
+    elif prob >= 60:
+        st.info("📈 상승 가능성 있음")
+    else:
+        st.warning("⚠️ 관망")
+
+    bp, reason = buy_price(df)
+    sp = sell_price(df)
+
+    st.subheader("💰 매수/매도")
+    st.write(f"- 매수: {bp:,}")
+    st.write(f"- 매도: {sp:,}")
+    st.write(f"- 전략: {reason}")
+
+    st.subheader("📊 세력 점수")
+    st.write(f"{power(df)}%")
 
 # =========================
-# 2️⃣ 급등주
+# 2. 급등주
 # =========================
 with tab2:
     st.subheader("🚀 급등주 TOP 10")
     st.dataframe(scan_market().head(10), use_container_width=True)
 
 # =========================
-# 3️⃣ 테마주
+# 3. 테마주
 # =========================
 with tab3:
     st.subheader("📊 테마주")
     st.dataframe(theme_list(), use_container_width=True)
 
 # =========================
-# 4️⃣ AI 내일추천
+# 4. AI 추천
 # =========================
 with tab4:
     st.subheader("🧠 내일 추천 TOP 5")
 
     rec = scan_market().head(5)
-    rec["추천이유"] = "추천점수 + 거래량 + 추세 기반"
+    rec["추천이유"] = "추세 + 거래량 + RSI 기반"
 
     st.dataframe(rec, use_container_width=True)
