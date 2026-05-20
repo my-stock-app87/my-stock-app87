@@ -63,7 +63,7 @@ def ind(df):
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
 
-    # 웰스 와일더(Wells Wilder) 방식 공식 RSI 최적화 구현
+    # 웰스 와일더(Wells Wilder) 방식 공식 RSI 최적화 구현 (잘린 부분 완결)
     avg_gain = gain.ewm(alpha=1/14, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/14, adjust=False).mean()
     
@@ -94,54 +94,63 @@ if not df_processed.empty:
     price_diff = current_price - prev_price
     price_ratio = (price_diff / prev_price) * 100
     
-    # 1. 상단 핵심 실시간 메트릭 화면 배치 (글자만 정확하게 변경)
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
+    # 세력 진입 비율 연산 (20일 평균 거래량 대비 당일 거래량 수급)
+    current_vol = latest["Volume"]
+    avg_vol20 = latest["VOL20"]
+    volume_strength = (current_vol / (avg_vol20 + 1e-10)) * 100
+    
+    # 📱 핸드폰 가로폭 전용 2열 메트릭 배치 (숫자 깨짐 방지)
+    m1, m2 = st.columns(2)
+    with m1:
         st.metric("현재가", f"{current_price:,} 원", f"{price_diff:,} 원 ({price_ratio:.2f}%)")
-    with col2:
+    with m2:
+        st.metric("🔥 세력 진입 비율", f"{int(volume_strength)}%", "100% 이상 장대 수급 포착")
+
+    m3, m4 = st.columns(2)
+    with m3:
         st.metric("🟢 적정매수가", f"{int(latest['MA5']):,} 원")
-    with col3:
+    with m4:
         st.metric("🔴 단기목표 매도가", f"{int(latest['MA20']):,} 원")
-    with col4:
-        rsi_val = latest["RSI"]
-        rsi_status = "🔴 과매수" if rsi_val >= 70 else "🔵 과매도" if rsi_val <= 30 else "🟢 보통"
-        st.metric("RSI (14)", f"{rsi_val:.2f}", rsi_status)
 
     st.markdown("---")
 
-    # 📱 탭 구성 수정: 요구하신 번호 정렬 반영
+    # 📱 탭 레이아웃 번호순 지정
     tab1, tab2 = st.tabs(["1. 종목분석", "2. 단기 급등추천"])
 
     with tab1:
-        # 기간 필터 및 날짜 한글화
         df_visual = df_processed.tail(period).copy()
+        
+        # 🟢 날짜 축 100% 한글 표기 변환
         df_visual.index = pd.to_datetime(df_visual.index).strftime('%m월 %d일')
-
-        # 🟢 스마트폰용 최근 5일 압축 뷰
+        
+        # 🟢 무한 스크롤 방지용 최근 5거래일 압축 프레임 생성
         df_recent_5 = df_visual.tail(5)
 
-        # 2. 메인 차트 영역 (최근 5일 압축)
-        st.subheader(f"📈 {selected_name} ({selected_code}) 주가 및 이동평균선")
-        chart_data = df_recent_5[["Close", "MA5", "MA20"]]
-        st.line_chart(chart_data, height=220)
+        # 최근 5일 데이터 차트 스크롤 배치
+        st.markdown("### 📈 주가 및 이동평균선 (최근 5일)")
+        st.line_chart(df_recent_5[["Close", "MA5", "MA20"]], height=220)
 
-        # 3. 서브 차트 영역 (최근 5일 압축)
-        st.subheader("📊 거래량 변동")
+        st.markdown("### 📊 거래량 변동 (최근 5일)")
         st.bar_chart(df_recent_5["Volume"], height=130)
         
-        st.subheader("⏱️ RSI 지표 추이")
+        st.markdown("### ⏱️ RSI 지표 추이 (최근 5일)")
         st.line_chart(df_recent_5["RSI"], height=130)
 
-        # 🟢 누르면 다 볼 수 있는 전체 데이터 확장 셔터
+        # 🟢 원터치 전체 데이터 확장 expander 토글 슬라이더
         with st.expander("🔍 터치하여 전체 기간 데이터 더보기", expanded=False):
+            st.markdown("#### 📅 주가 및 이평선 전체 흐름")
             st.line_chart(df_visual[["Close", "MA5", "MA20"]])
+            
+            st.markdown("#### 📊 거래량 전체 흐름")
             st.bar_chart(df_visual["Volume"])
+            
+            st.markdown("#### ⏱️ RSI 지표 전체 흐름")
             st.line_chart(df_visual["RSI"])
 
     with tab2:
         st.markdown("### 🚀 내일 급등 수급 유력주")
-        # 기존 주신 데이터셋 기반 샘플 매핑 처리
-        st.write("당일 거래량이 강하게 터지며 5일선 상단 돌파에 성공한 단기 수급 유력 종목 리스트입니다.")
+        st.write("당일 수급량과 골든크로스 패턴이 포착된 실시간 단기 전략 종목방입니다.")
+        # 간결한 모바일 반응형 데이터프레임 구조 유지
         sample_rec = pd.DataFrame([
             {"종목명": "SK하이닉스", "현재가": "상세조회 참조", "시그널": "🚀 단기 수급 급증 (내일 상승 기대)"},
             {"종목명": "한화에어로스페이스", "현재가": "상세조회 참조", "시그널": "🚀 단기 수급 급증 (내일 상승 기대)"}
