@@ -21,7 +21,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 🟢 타이틀을 "주식주신 PRO"로 변경 완료
 st.title("🔥 주식주신 PRO")
 
 # 🔥 5초마다 실시간 가격 자동 새로고침 활성화
@@ -98,18 +97,22 @@ def ind(df):
     return df
 
 # =====================================================
-# 오늘의 급등주 및 하락 후 상승 타겟 탐색 엔진
+# 오늘의 급등주 및 하락 후 상승 타겟 탐색 엔진 (에러 수정)
 # =====================================================
 @st.cache_data(ttl=600)
-def scan_market_signals(df_all_stocks):
+def scan_market_signals():
+    # 🟢 [에러 해결 수정 포인트] 파라미터로 무거운 데이터프레임을 받지 않고 내부에서 직접 접근하여 UnhashableParamError를 차단합니다.
     pump_list = []
     rebound_list = []
     leaders = ["삼성전자", "SK하이닉스", "현대차", "NAVER", "카카오", "두산로보틱스", "한화에어로스페이스", "에코프로", "알테오젠", "기아"]
     
     for name in leaders:
         c = code(name)
-        if not c: continue
-        df = fdr.DataReader(c)
+        if c is None: continue
+        # 만약 c가 numpy array 형태라면 첫번째 요소를 추출
+        if isinstance(c, np.ndarray) and len(c) > 0:
+            c = c[0]
+        df = fdr.DataReader(str(c))
         if df is None or len(df) < 25: continue
         
         df_p = ind(df)
@@ -138,6 +141,9 @@ st.markdown("<div style='margin-bottom:-10px; font-weight:500; font-size:14px; c
 selected_name = st.selectbox("", names, index=names.index("삼성전자") if "삼성전자" in names else 0, label_visibility="collapsed")
 
 selected_code = code(selected_name)
+if isinstance(selected_code, np.ndarray) and len(selected_code) > 0:
+    selected_code = selected_code[0]
+
 raw_df = get_price(selected_code)
 df_processed = ind(raw_df)
 
@@ -161,6 +167,9 @@ if not df_processed.empty:
 
     # 📱 스마트폰용 세련된 3개 탭 구성
     tab1, tab2, tab3 = st.tabs(["📊 1. 종목분석", "🚀 2. 오늘의 급등주", "🎯 3. 반등 유망주 추천"])
+
+    # 🟢 [수정 포인트] 에러가 발생하는 캐싱 구문을 제거하고 안전하게 수급 결과 데이터를 로드합니다.
+    pump_df, rebound_df = scan_market_signals()
 
     with tab1:
         # 가로폭 방어형 메트릭 3열 배치
@@ -219,15 +228,11 @@ if not df_processed.empty:
     with tab2:
         st.markdown("<div class='tab-title'>🚀 2. 오늘의 급등주</div>", unsafe_allow_html=True)
         st.write("당일 강력한 돈이 쏠리며 세력 순매수 수급이 상방으로 강하게 분출된 시장 주도주 탑3 목록입니다.")
-        
-        pump_df, _ = scan_market_signals(df_stock)
         st.dataframe(pump_df, use_container_width=True, hide_index=True)
 
     with tab3:
         st.markdown("<div class='tab-title'>🎯 3. 반등 유망주 추천 (오늘 하락 ➡️ 내일 상승)</div>", unsafe_allow_html=True)
         st.write("금일 주가는 하락 조정을 주었으나 세력 이탈 없이 꼬리를 달아, 내일 아침 즉각 장대양봉 반등이 유력한 눌림목 종목입니다.")
-        
-        _, rebound_df = scan_market_signals(df_stock)
         st.dataframe(rebound_df, use_container_width=True, hide_index=True)
 
 else:
