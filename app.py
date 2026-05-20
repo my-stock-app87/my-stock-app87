@@ -1,7 +1,7 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
 import FinanceDataReader as fdr
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="주식 AI", page_icon="📈")
 st.title("📊 나만의 주식 AI 분석기")
@@ -28,36 +28,36 @@ def get_stock_code(search_input):
             return stock['Code']
     return None
 
-# 사용자 입력창
+# 사용자 입력창 (이제 시장 선택 메뉴는 필요 없어졌습니다!)
 user_search = st.text_input("종목명 또는 코드 6자리 입력 (예: 삼성전자, 에코프로, 005930)", "삼성전자")
-market_type = st.selectbox("시장 선택 (이름 검색 시에도 맞춰주세요)", ["코스피 (KS)", "코스닥 (KQ)"])
-
-suffix = ".KS" if market_type == "코스피 (KS)" else ".KQ"
 
 if st.button("실시간 분석 실행"):
-    with st.spinner("종목 검색 및 분석 중..."):
+    with st.spinner("종목 검색 및 주가 데이터 분석 중..."):
         real_code = get_stock_code(user_search)
         
         if not real_code:
             st.error("❌ 종목을 찾을 수 없습니다. 이름이 정확한지 확인해 주세요. (예: 삼성전자)")
         else:
-            ticker_code = real_code + suffix
-            
             try:
-                # 야후 파이낸스 서버에서 원시 데이터를 직접 다운로드
-                df = yf.download(ticker_code, period="3m", interval="1d")
+                # [핵심 수정] 해외 야후 서버 대신, 한국 주식 데이터를 가장 안전하게 가져오는 정식 코드로 전면 교체
+                end_date = datetime.today().strftime('%Y-%m-%d')
+                start_date = (datetime.today() - timedelta(days=120)).strftime('%Y-%m-%d')
+                
+                df = fdr.DataReader(real_code, start_date, end_date) [1]
                 
                 if df.empty:
-                    st.error("❌ 데이터를 가져오지 못했습니다. 시장 선택(코스피/코스닥)이 종목과 맞는지 확인해 주세요.")
+                    st.error("❌ 주가 데이터를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.")
                 else:
-                    # ✨ [핵심 수정] 최신 야후 파이낸스의 다중 컬럼 버그를 강제로 파괴하고 단일 표로 세탁합니다.
-                    if isinstance(df.columns, pd.MultiIndex):
-                        df.columns = df.columns.get_level_values(0)
-                    
                     df = df.copy()
-                    
-                    # 수치 연산을 위해 모든 소수점 데이터를 강제 변환
-                    close_series = pd.to_numeric(df['Close'].squeeze(), errors='coerce')
+                    # 컬럼 이름을 대문자로 통일 (Close, Open 등)
+                    if 'Close' not in df.columns and 'Close' in df.columns:
+                        pass
+                    else:
+                        # FinanceDataReader는 한글 또는 대문자로 주기 때문에 강제 지정
+                        if 'Close' not in df.columns:
+                            df['Close'] = df['종가'] if '종가' in df.columns else df.iloc[:, 3]
+
+                    close_series = pd.to_numeric(df['Close'], errors='coerce')
                     
                     # 기술적 지표 계산 (5일선, 20일선)
                     df['MA5'] = close_series.rolling(window=5).mean()
@@ -97,4 +97,4 @@ if st.button("실시간 분석 실행"):
                     st.subheader("🤖 AI에게 물어볼 프롬프트")
                     st.code(f"대한민국 {user_search} 종목의 최근 테마주 엮임 현황과 대장주 추천해줘.", language="text")
             except Exception as e:
-                st.error(f"⚠️ 시스템 연동 오류 발생: {e}")
+                st.error(f"⚠️ 시스템 데이터 연동 오류 발생: {e}")
