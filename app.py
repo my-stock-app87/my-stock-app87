@@ -6,20 +6,14 @@ import feedparser
 from streamlit_autorefresh import st_autorefresh
 
 # =========================
-# 기본 설정
-# =========================
 st.set_page_config(page_title="주식주신 PRO", layout="wide")
 st.title("🔥 주식주신 PRO")
-
 st_autorefresh(interval=5000, key="refresh")
 
 # =========================
-# 종목 데이터
-# =========================
 @st.cache_data(ttl=3600)
 def stock_list():
-    df = fdr.StockListing("KRX")[["Code", "Name"]]
-    return df.dropna().drop_duplicates()
+    return fdr.StockListing("KRX")[["Code", "Name"]].dropna()
 
 df_stock = stock_list()
 names = df_stock["Name"].tolist()
@@ -29,34 +23,17 @@ def code(name):
     return r["Code"].iloc[0] if not r.empty else None
 
 # =========================
-# 가격 데이터
-# =========================
 @st.cache_data(ttl=5)
 def get_price(c):
     return fdr.DataReader(str(c)).tail(120)
 
 # =========================
-# 뉴스
-# =========================
-def get_news(name):
-    try:
-        url = f"https://news.google.com/rss/search?q={name}+주가&hl=ko&gl=KR&ceid=KR:ko"
-        feed = feedparser.parse(url)
-        return [e.title for e in feed.entries[:5]]
-    except:
-        return ["뉴스 없음"]
-
-# =========================
-# 지표
-# =========================
 def ind(df):
     df = df.copy()
 
     df["MA5"] = df["Close"].rolling(5).mean()
-    df["MA20"] = df["Close"].rolling(20).mean()
-    df["VOL20"] = df["Volume"].rolling(20).mean()
 
-    vol = df["Volume"] / (df["VOL20"] + 1e-10)
+    vol = df["Volume"] / (df["Volume"].rolling(20).mean() + 1e-10)
     trend = (df["Close"] - df["MA5"]) / (df["MA5"] + 1e-10)
 
     df["Whale"] = np.clip(vol * 60 + trend * 50, 0, 100)
@@ -66,55 +43,26 @@ def ind(df):
 
     df["Acc"] = np.clip(70 + (100 - df["Whale"])*0.2, 50, 97)
 
-    df["Buy"] = df["MA20"] - df["Close"].rolling(20).std()*0.8
-    df["Sell"] = df["MA20"] + df["Close"].rolling(20).std()*0.8
+    # =========================
+    # 🔥 당일 기준 추천매수/매도
+    # =========================
+    tr = df["High"] - df["Low"]
+    avg_tr = tr.rolling(5).mean()
+
+    df["Buy"] = df["Close"] - (avg_tr * 0.35)
+    df["Sell"] = df["Close"] + (avg_tr * 0.45)
 
     return df.dropna()
 
 # =========================
-# 분석
-# =========================
-def comment(l):
-    if l["Close"] > l["MA5"]:
-        trend = "상승"
-    else:
-        trend = "조정"
+def get_news(name):
+    try:
+        url = f"https://news.google.com/rss/search?q={name}+주가&hl=ko&gl=KR&ceid=KR:ko"
+        feed = feedparser.parse(url)
+        return [e.title for e in feed.entries[:5]]
+    except:
+        return []
 
-    flow = "강함" if l["Whale"] > 60 else "보통"
-    outlook = "상승 가능" if l["Whale"] > 50 else "관망"
-
-    return trend, flow, outlook
-
-# =========================
-# 급등주
-# =========================
-def scan_pump():
-    rows = []
-
-    for n in names[:20]:
-        c = code(n)
-        df = ind(get_price(c))
-        if df.empty: continue
-
-        l, p = df.iloc[-1], df.iloc[-2]
-        chg = (l["Close"] - p["Close"]) / p["Close"] * 100
-
-        score = l["Whale"]*0.5 + chg*10
-
-        if l["Whale"] > 60 and chg > 1:
-            rows.append({
-                "종목": n,
-                "현재가": f"{int(l['Close']):,}",
-                "전일가": f"{int(p['Close']):,}",
-                "등락": f"{chg:+.2f}%",
-                "세력": f"{l['Whale']:.1f}%",
-                "점수": round(score,2)
-            })
-
-    return pd.DataFrame(rows).sort_values("점수", ascending=False).head(10)
-
-# =========================
-# UI
 # =========================
 name = st.selectbox("종목", names)
 c = code(name)
@@ -126,8 +74,7 @@ if not df.empty:
 
     price = int(l["Close"])
     diff = price - int(p["Close"])
-    base = price - diff
-    pct = diff / base * 100 if base != 0 else 0
+    pct = diff / int(p["Close"]) * 100
 
     tab1, tab2, tab3 = st.tabs(["📊 분석", "🚀 급등주", "🎯 내일반등"])
 
@@ -148,67 +95,107 @@ if not df.empty:
         </div>
         """, unsafe_allow_html=True)
 
-        st.dataframe(pd.DataFrame([
-            {"상승": f"{l['Pred']:.1f}%", "적중": f"{l['Acc']:.1f}%", "세력": f"{l['Whale']:.1f}%"},
-            {"매수": f"{int(l['Buy']):,}", "매도": f"{int(l['Sell']):,}", "전일": f"{diff:+,}"}
-        ]), use_container_width=True, hide_index=True)
+        # =========================
+        # 🔥 1줄 핵심 표 (요청사항 완성)
+        # =========================
+        st.markdown(f"""
+        <div style="
+            display:flex;
+            justify-content:space-between;
+            background:#f8f9fa;
+            padding:12px;
+            border-radius:12px;
+            font-weight:800;
+            font-size:13px;
+        ">
+            <div>📈 {l['Pred']:.1f}%</div>
+            <div>🎯 {l['Acc']:.1f}%</div>
+            <div>🐳 {l['Whale']:.1f}%</div>
+            <div>🟢 {int(l['Buy']):,}</div>
+            <div>🔴 {int(l['Sell']):,}</div>
+            <div style="color:{'red' if diff>0 else 'blue'};">
+                {diff:+,}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        buy = l["Whale"] > 60 and l["Close"] <= l["Buy"]*1.02
-        sell = l["Close"] >= l["Sell"]*0.98
+        # =========================
+        # 🚨 신호
+        # =========================
+        buy_signal = l["Whale"] > 60 and l["Close"] <= l["Buy"]*1.02
+        sell_signal = l["Close"] >= l["Sell"]*0.98
 
-        if buy:
+        if buy_signal:
             st.markdown("🟥 매수 신호")
-        elif sell:
+        elif sell_signal:
             st.markdown("🟦 매도 신호")
         else:
             st.info("⚪ 관망")
 
-        trend, flow, outlook = comment(l)
-
-        st.write("•", trend)
-        st.write("•", flow)
-        st.write("•", outlook)
-
+        # =========================
+        # 📰 뉴스
+        # =========================
         st.markdown("### 📰 뉴스")
         for n in get_news(name):
             st.write("•", n)
 
     # =========================
-    # TAB2
+    # TAB2 (급등주)
     # =========================
     with tab2:
         st.markdown("### 🚀 급등주 TOP10")
-        st.dataframe(scan_pump(), use_container_width=True)
+
+        rows = []
+
+        for n in names[:10]:
+            c = code(n)
+            d = ind(get_price(c))
+            if d.empty: continue
+
+            l2, p2 = d.iloc[-1], d.iloc[-2]
+            chg = (l2["Close"] - p2["Close"]) / p2["Close"] * 100
+
+            score = l2["Whale"]*0.6 + max(chg,0)*8
+
+            rows.append({
+                "종목": n,
+                "현재": int(l2["Close"]),
+                "전일": int(p2["Close"]),
+                "등락": round(chg,2),
+                "세력": round(l2["Whale"],1),
+                "점수": round(score,1)
+            })
+
+        st.dataframe(pd.DataFrame(rows).sort_values("점수", ascending=False))
 
     # =========================
-    # TAB3
+    # TAB3 (내일반등)
     # =========================
     with tab3:
         st.markdown("### 🎯 내일 반등 TOP10")
 
         rows = []
 
-        for n in names[:20]:
+        for n in names[:10]:
             c = code(n)
-            df2 = ind(get_price(c))
-            if df2.empty: continue
+            d = ind(get_price(c))
+            if d.empty: continue
 
-            l2, p2 = df2.iloc[-1], df2.iloc[-2]
-
+            l2, p2 = d.iloc[-1], d.iloc[-2]
             chg = (l2["Close"] - p2["Close"]) / p2["Close"] * 100
 
-            score = l2["Whale"]*0.4 + l2["Acc"]*0.4 + max(-chg*5,0)
+            score = l2["Whale"]*0.5 + l2["Acc"]*0.3 + max(-chg*4,0)
 
             rows.append({
                 "종목": n,
-                "현재": f"{int(l2['Close']):,}",
-                "전일": f"{int(p2['Close']):,}",
-                "등락": f"{chg:+.2f}%",
-                "세력": f"{l2['Whale']:.1f}%",
-                "점수": round(score,2)
+                "현재": int(l2["Close"]),
+                "전일": int(p2["Close"]),
+                "등락": round(chg,2),
+                "세력": round(l2["Whale"],1),
+                "점수": round(score,1)
             })
 
-        st.dataframe(pd.DataFrame(rows).sort_values("점수", ascending=False), use_container_width=True)
+        st.dataframe(pd.DataFrame(rows).sort_values("점수", ascending=False))
 
 else:
     st.warning("데이터 부족")
