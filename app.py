@@ -5,29 +5,59 @@ import FinanceDataReader as fdr
 from streamlit_autorefresh import st_autorefresh
 
 # =====================================================
-# 설정 (모바일 스마트폰 가로폭 및 다크/라이트앱 스타일 최적화)
+# 설정
 # =====================================================
 st.set_page_config(page_title="주식주신 PRO", layout="wide")
 
-# 모바일용 커스텀 CSS 스타일 입히기
 st.markdown("""
     <style>
-    .reportview-container .main .block-container{ max-width: 100%; padding-top: 1rem; padding-bottom: 1rem; }
-    .stMetric { background-color: #f8f9fa; padding: 12px; border-radius: 12px; border: 1px solid #e9ecef; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
-    div[data-testid="stMetricValue"] { font-size: 20px !important; font-weight: 700 !important; color: #111111; }
-    div[data-testid="stMetricLabel"] { font-size: 13px !important; color: #666666; font-weight: 500; }
-    .status-card { background-color: #fdfdfd; padding: 15px; border-radius: 14px; margin-bottom: 20px; font-size: 14px; line-height: 1.6; color: #333; box-shadow: 0 2px 5px rgba(0,0,0,0.01); }
-    .tab-title { font-size: 16px; font-weight: bold; margin-bottom: 10px; color: #222; }
+    .reportview-container .main .block-container{
+        max-width: 100%;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+    .stMetric {
+        background-color: #f8f9fa;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid #e9ecef;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 20px !important;
+        font-weight: 700 !important;
+        color: #111111;
+    }
+    div[data-testid="stMetricLabel"] {
+        font-size: 13px !important;
+        color: #666666;
+        font-weight: 500;
+    }
+    .status-card {
+        background-color: #fdfdfd;
+        padding: 15px;
+        border-radius: 14px;
+        margin-bottom: 20px;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #333;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.01);
+    }
+    .tab-title {
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 10px;
+        color: #222;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("🔥 주식주신 PRO")
 
-# 🔥 5초마다 실시간 가격 자동 새로고침 활성화
 st_autorefresh(interval=5000, key="global_refresh")
 
 # =====================================================
-# 데이터 로드 및 최적화 캐싱
+# 데이터 로드
 # =====================================================
 @st.cache_data(ttl=3600)
 def stock_list():
@@ -35,7 +65,10 @@ def stock_list():
         df = fdr.StockListing("KRX")[["Code", "Name"]]
         return df.dropna().drop_duplicates(subset=["Name"])
     except:
-        return pd.DataFrame({"Code": ["005930", "000660"], "Name": ["삼성전자", "SK하이닉스"]})
+        return pd.DataFrame({
+            "Code": ["005930", "000660"],
+            "Name": ["삼성전자", "SK하이닉스"]
+        })
 
 df_stock = stock_list()
 names = df_stock["Name"].tolist()
@@ -44,105 +77,146 @@ def code(name):
     row = df_stock[df_stock["Name"] == name]
     if row.empty:
         return None
-    return row["Code"].values if hasattr(row["Code"], "values") else row.iloc["Code"]
+    return row["Code"].iloc[0]
 
-@st.cache_data(ttl=5) # 실시간 변경 인식을 위한 초단기 TTL 설정
+
+@st.cache_data(ttl=5)
 def get_price(c):
     try:
         if not c:
             return pd.DataFrame()
-        df = fdr.DataReader(c)
-        if df is None or df.empty:
-            return pd.DataFrame()
-        return df
+        df = fdr.DataReader(str(c)).tail(120)
+        return df if df is not None else pd.DataFrame()
     except:
         return pd.DataFrame()
 
 # =====================================================
-# 지표 및 AI 추천 가격/예측률 연산공학
+# 지표 계산
 # =====================================================
 def ind(df):
     if df is None or df.empty or len(df) < 25:
         return pd.DataFrame()
 
     df = df.copy()
+
     df["MA5"] = df["Close"].rolling(5).mean()
     df["MA20"] = df["Close"].rolling(20).mean()
     df["VOL20"] = df["Volume"].rolling(20).mean()
 
-    # 🐳 세력 진입 비율 연산 (%)
     df["Volume_Strength"] = (df["Volume"] / (df["VOL20"] + 1e-10)) * 100
 
-    # AI 추천 가격 산출 (변동성 채널 기반)
     std20 = df["Close"].rolling(20).std()
-    df["AI_Buy"] = df["MA20"] - (std20 * 1.2)   
-    df["AI_Sell"] = df["MA20"] + (std20 * 1.2)  
+    df["AI_Buy"] = df["MA20"] - (std20 * 1.2)
+    df["AI_Sell"] = df["MA20"] + (std20 * 1.2)
 
-    # 📈 오늘 예상 상승률 계산 수식
     std5 = df["Close"].rolling(5).std()
-    df["Pred_Return"] = (df["Volume_Strength"] / 100) * (std5 / (df["Close"] + 1e-10)) * 100
-    df["Pred_Return"] = np.clip(df["Pred_Return"], 0.5, 28.5) 
+    df["Pred_Return"] = (df["Volume_Strength"] / 100) * (
+        std5 / (df["Close"] + 1e-10)
+    ) * 100
+    df["Pred_Return"] = np.clip(df["Pred_Return"], 0.5, 28.5)
 
-    # 🎯 AI 코딩 예측 성공률 계산 수식
     vol_stability = 100 - np.minimum(df["Volume_Strength"] * 0.1, 30)
-    df["Pred_Accuracy"] = np.where(df["Close"] > df["MA5"], 75.0 + (vol_stability * 0.2), 65.0 + (vol_stability * 0.2))
+    df["Pred_Accuracy"] = np.where(
+        df["Close"] > df["MA5"],
+        75.0 + (vol_stability * 0.2),
+        65.0 + (vol_stability * 0.2),
+    )
     df["Pred_Accuracy"] = np.clip(df["Pred_Accuracy"], 55.0, 96.8)
 
-    # 🎯 종목 추천 점수 (100점 만점)
-    body_ratio = ((df["Close"] - df["Open"]) / (df["High"] - df["Low"] + 1e-10)) * 30
+    range_ = (df["High"] - df["Low"]).replace(0, 1e-10)
+    body_ratio = ((df["Close"] - df["Open"]) / range_) * 30
+
     vol_score = np.clip((df["Volume_Strength"] / 200) * 40, 0, 40)
     ma_align = np.where(df["Close"] > df["MA5"], 30, 10)
+
     df["Stock_Score"] = np.clip(vol_score + ma_align + body_ratio, 10, 100)
-    
+
+    df = df.dropna()
     return df
 
 # =====================================================
-# 오늘의 급등주 및 하락 후 상승 타겟 탐색 엔진 (에러 수정)
+# 시장 스캐너
 # =====================================================
 @st.cache_data(ttl=600)
 def scan_market_signals():
-    # 🟢 [에러 해결 수정 포인트] 파라미터로 무거운 데이터프레임을 받지 않고 내부에서 직접 접근하여 UnhashableParamError를 차단합니다.
     pump_list = []
     rebound_list = []
-    leaders = ["삼성전자", "SK하이닉스", "현대차", "NAVER", "카카오", "두산로보틱스", "한화에어로스페이스", "에코프로", "알테오젠", "기아"]
-    
+
+    leaders = [
+        "삼성전자", "SK하이닉스", "현대차", "NAVER", "카카오",
+        "두산로보틱스", "한화에어로스페이스", "에코프로", "알테오젠", "기아"
+    ]
+
     for name in leaders:
         c = code(name)
-        if c is None: continue
-        # 만약 c가 numpy array 형태라면 첫번째 요소를 추출
-        if isinstance(c, np.ndarray) and len(c) > 0:
-            c = c[0]
-        df = fdr.DataReader(str(c))
-        if df is None or len(df) < 25: continue
-        
+        if c is None:
+            continue
+
+        df = fdr.DataReader(str(c)).tail(120)
+        if df is None or len(df) < 25:
+            continue
+
         df_p = ind(df)
+        if df_p.empty:
+            continue
+
         latest = df_p.iloc[-1]
         prev = df_p.iloc[-2]
-        
+
         c_price = int(latest["Close"])
         v_strength = latest["Volume_Strength"]
         score = round(latest["Stock_Score"], 1)
-        
-        if (latest["Close"] > latest["MA5"]) and (latest["Close"] > prev["Close"]) and (v_strength >= 130):
-            pump_list.append({"종목명": name, "현재가": f"{c_price:,}원", "세력진입": f"{int(v_strength)}% 폭발", "AI점수": f"{score}점"})
-            
-        if (latest["Close"] < latest["Open"]) and (v_strength >= 120):
-            rebound_list.append({"종목명": name, "현재가": f"{c_price:,}원", "수급강도": f"{int(v_strength)}% 매집", "AI예상점수": f"{score}점"})
-            
-    if not pump_list: pump_list = [{"종목명": "한화에어로스페이스", "현재가": "조회참조", "세력진입": "240% 폭발", "AI점수": "91.5점"}]
-    if not rebound_list: rebound_list = [{"종목명": "SK하이닉스", "현재가": "조회참조", "수급강도": "145% 매집", "AI예상점수": "78.2점"}]
-        
+
+        if (
+            latest["Close"] > latest["MA5"]
+            and latest["Close"] > prev["Close"]
+            and v_strength >= 130
+        ):
+            pump_list.append({
+                "종목명": name,
+                "현재가": f"{c_price:,}원",
+                "세력진입": f"{int(v_strength)}%",
+                "AI점수": f"{score}점"
+            })
+
+        if latest["Close"] < latest["Open"] and v_strength >= 120:
+            rebound_list.append({
+                "종목명": name,
+                "현재가": f"{c_price:,}원",
+                "수급강도": f"{int(v_strength)}%",
+                "AI예상점수": f"{score}점"
+            })
+
+    if not pump_list:
+        pump_list = [{
+            "종목명": "한화에어로스페이스",
+            "현재가": "조회참조",
+            "세력진입": "240%",
+            "AI점수": "91.5점"
+        }]
+
+    if not rebound_list:
+        rebound_list = [{
+            "종목명": "SK하이닉스",
+            "현재가": "조회참조",
+            "수급강도": "145%",
+            "AI예상점수": "78.2점"
+        }]
+
     return pd.DataFrame(pump_list), pd.DataFrame(rebound_list)
 
 # =====================================================
-# UI 레이아웃 화면 드로잉
+# UI
 # =====================================================
-st.markdown("<div style='margin-bottom:-10px; font-weight:500; font-size:14px; color:#555;'>🔍 실시간 진단 종목 선택</div>", unsafe_allow_html=True)
-selected_name = st.selectbox("", names, index=names.index("삼성전자") if "삼성전자" in names else 0, label_visibility="collapsed")
+st.markdown("🔍 실시간 종목 선택")
+selected_name = st.selectbox(
+    "",
+    names,
+    index=names.index("삼성전자") if "삼성전자" in names else 0,
+    label_visibility="collapsed"
+)
 
 selected_code = code(selected_name)
-if isinstance(selected_code, np.ndarray) and len(selected_code) > 0:
-    selected_code = selected_code[0]
 
 raw_df = get_price(selected_code)
 df_processed = ind(raw_df)
@@ -150,90 +224,48 @@ df_processed = ind(raw_df)
 if not df_processed.empty:
     latest = df_processed.iloc[-1]
     prev = df_processed.iloc[-2]
-    
+
     current_price = int(latest["Close"])
     price_diff = current_price - int(prev["Close"])
     price_ratio = (price_diff / int(prev["Close"])) * 100
-    
+
     ai_buy_price = int(latest["AI_Buy"])
     ai_sell_price = int(latest["AI_Sell"])
     whale_ratio = latest["Volume_Strength"]
+
     stock_score_val = latest["Stock_Score"]
-    
     pred_return_val = latest["Pred_Return"]
     pred_accuracy_val = latest["Pred_Accuracy"]
 
-    st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
-
-    # 📱 스마트폰용 세련된 3개 탭 구성
-    tab1, tab2, tab3 = st.tabs(["📊 1. 종목분석", "🚀 2. 오늘의 급등주", "🎯 3. 반등 유망주 추천"])
-
-    # 🟢 [수정 포인트] 에러가 발생하는 캐싱 구문을 제거하고 안전하게 수급 결과 데이터를 로드합니다.
     pump_df, rebound_df = scan_market_signals()
 
+    tab1, tab2, tab3 = st.tabs([
+        "📊 종목분석",
+        "🚀 급등주",
+        "🎯 반등주"
+    ])
+
     with tab1:
-        # 가로폭 방어형 메트릭 3열 배치
-        row1_c1, row1_c2, row1_c3 = st.columns(3)
-        with row1_c1:
-            st.metric("현재가 (실시간 ⚡)", f"{current_price:,} 원", f"{price_diff:+,} 원 ({price_ratio:+.2f}%)")
-        with row1_c2:
-            st.metric("📈 오늘 예상 상승률", f"+{pred_return_val:.1f} %", "오늘 추가로 더 오를 수 있는 수치")
-        with row1_c3:
-            st.metric("🎯 AI 예측 성공률", f"{pred_accuracy_val:.1f} %", "위 상승률 맞출 확률 (신뢰도)")
+        c1, c2, c3 = st.columns(3)
 
-        row2_c1, row2_c2, row2_c3 = st.columns(3)
-        with row2_c1:
-            st.metric("🐳 세력의 진입여부", f"{int(whale_ratio)} %", "100% 넘으면 평소보다 수급 터진 것")
-        with row2_c2:
-            st.metric("🟢 AI 추천 매수가", f"{ai_buy_price:,} 원", "AI가 연산한 당일 안전 매수 저점")
-        with row2_c3:
-            st.metric("🔴 AI 추천 매도가", f"{ai_sell_price:,} 원", "AI가 연산한 당일 단기 목표 고점")
-            
-        # 대형 추천점수 스코어 보드
-        st.markdown(f"""
-            <div style='background: #fff; padding: 15px; border-radius: 12px; border: 1px solid #dee2e6; text-align: center; margin-top: 10px; margin-bottom: 15px;'>
-                <span style='font-size: 14px; color: #555; font-weight:500;'>🎯 종합 추천 점수</span><br>
-                <span style='font-size: 28px; font-weight: 800; color: #2b579a;'>{round(stock_score_val, 1)} 점</span>
-                <span style='font-size: 14px; color: #888;'> / 100점 만점</span>
-            </div>
-        """, unsafe_allow_html=True)
+        c1.metric("현재가", f"{current_price:,}원", f"{price_diff:+,}원")
+        c2.metric("예상 상승률", f"+{pred_return_val:.1f}%")
+        c3.metric("AI 성공률", f"{pred_accuracy_val:.1f}%")
 
-        # 당일 종합 주식상황 AI 분석 박스 (신호등 테두리)
-        if whale_ratio >= 150 and price_ratio > 0:
-            border_color = "#dc3545" 
-            analysis_brief = f"현재 <b>{selected_name}</b>은 평소 대비 세력 유입이 <b>{int(whale_ratio)}%</b> 폭발하여 오늘 장 마감 전까지 추가로 <b>+{pred_return_val:.1f}%</b>가량 더 치솟을 여력이 있습니다. 예측 신뢰도가 <b>{pred_accuracy_val:.1f}%</b>로 아주 높으니 오늘 강하게 홀딩해볼 만합니다."
-        elif price_ratio < 0 and whale_ratio >= 120:
-            border_color = "#007bff" 
-            analysis_brief = f"주가는 일시적인 음봉 조정을 받고 있으나 거래량이 터지며 세력 매수 자금이 밑바닥을 강하게 지탱하는 눌림목입니다. 내일 반등 가능성이 높으니 아래 가이드 매수가(<b>{ai_buy_price:,}원</b>) 부근에서 나누어 담는 전략이 유리합니다."
-        else:
-            border_color = "#28a745" 
-            analysis_brief = f"현재 평소와 다름없는 잔잔한 박스권 흐름입니다. 무리해서 뇌동매매하거나 쫓아가지 마시고, 아래 AI 가이드 가격대 라인을 참고하며 차분히 기다릴 때입니다."
+        st.metric("세력 강도", f"{int(whale_ratio)}%")
 
         st.markdown(f"""
-            <div class='status-card' style='border-left: 5px solid {border_color};'>
-                <b>📝 당일 종합 주식상황 AI 진단</b><br>{analysis_brief}
-            </div>
+        <div class="status-card">
+        <b>AI 분석</b><br>
+        점수: {stock_score_val:.1f} / 100
+        </div>
         """, unsafe_allow_html=True)
-
-        # 최근 5일 가격 표
-        st.markdown("<div class='tab-title'>📊 최근 5거래일 가격 동향 표</div>", unsafe_allow_html=True)
-        df_recent_5 = df_processed.tail(5).copy()
-        df_recent_5.index = pd.to_datetime(df_recent_5.index).strftime('%m월 %d일')
-        
-        table_output = df_recent_5[["Open", "High", "Low", "Close"]].copy()
-        table_output.columns = ["시작가", "최고가 ▲", "최저가 ▼", "종가"]
-        
-        st.dataframe(table_output.style.format("{:,.0f}원"), use_container_width=True)
 
     with tab2:
-        st.markdown("<div class='tab-title'>🚀 2. 오늘의 급등주</div>", unsafe_allow_html=True)
-        st.write("당일 강력한 돈이 쏠리며 세력 순매수 수급이 상방으로 강하게 분출된 시장 주도주 탑3 목록입니다.")
         st.dataframe(pump_df, use_container_width=True, hide_index=True)
 
     with tab3:
-        st.markdown("<div class='tab-title'>🎯 3. 반등 유망주 추천 (오늘 하락 ➡️ 내일 상승)</div>", unsafe_allow_html=True)
-        st.write("금일 주가는 하락 조정을 주었으나 세력 이탈 없이 꼬리를 달아, 내일 아침 즉각 장대양봉 반등이 유력한 눌림목 종목입니다.")
         st.dataframe(rebound_df, use_container_width=True, hide_index=True)
 
 else:
-    st.warning("⚠️ 데이터를 가져오지 못했거나 분석에 필요한 데이터량이 부족합니다.")
+    st.warning("데이터 부족")
