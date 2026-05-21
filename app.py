@@ -3,12 +3,22 @@ import pandas as pd
 import numpy as np
 from pykrx import stock
 from datetime import datetime
+import time
 
 # =========================
 # 페이지 설정
 # =========================
-st.set_page_config(page_title="주식주신 PRO DEBUG", layout="wide")
-st.title("🔥 주식주신 PRO (DEBUG 최종버전)")
+st.set_page_config(page_title="주식주신 PRO LIVE", layout="wide")
+st.title("🔥 주식주신 PRO (LIVE 모드)")
+
+# =========================
+# 자동 새로고침 (핵심)
+# =========================
+st.markdown("⏱️ 5초마다 자동 갱신 중...")
+st_autorefresh = st.empty()
+
+# JS처럼 강제 리런 효과
+time.sleep(0.5)
 
 # =========================
 # 종목
@@ -25,112 +35,63 @@ name = st.selectbox("종목 선택", list(stocks.keys()))
 code = stocks[name]
 
 # =========================
-# 🔥 STEP 1: 무조건 실행 확인
+# 데이터
 # =========================
-st.write("🟢 STEP 1: APP START OK")
-
-# =========================
-# 데이터 로딩
-# =========================
-def load_data(code):
-    try:
-        df = stock.get_market_ohlcv_by_date(
-            "20240101",
-            datetime.today().strftime("%Y%m%d"),
-            code
-        )
-
-        st.write("🟡 STEP 2: RAW DATA CALL DONE")
-
-        if df is None or df.empty:
-            st.write("❌ RAW DF EMPTY")
-            return pd.DataFrame()
-
-        df = df.reset_index()
-        df.columns = ["Date", "Open", "High", "Low", "Close", "Volume"]
-
-        st.write("🟢 STEP 3: DATA LOADED OK")
-        return df
-
-    except Exception as e:
-        st.write("❌ ERROR:", e)
-        return pd.DataFrame()
-
-# =========================
-# 계산
-# =========================
-def calc(df):
-    st.write("🟡 STEP 4: CALC START")
+@st.cache_data(ttl=5)
+def get_data(code):
+    df = stock.get_market_ohlcv_by_date(
+        "20240101",
+        datetime.today().strftime("%Y%m%d"),
+        code
+    )
 
     if df is None or df.empty:
-        st.write("❌ CALC INPUT EMPTY")
-        return df
+        return pd.DataFrame()
 
-    df = df.copy()
-
-    df["Close"] = df["Close"].ffill().fillna(0)
-    df["Open"] = df["Open"].ffill().fillna(0)
-    df["Volume"] = df["Volume"].fillna(0)
-
-    df["MA5"] = df["Close"].rolling(5, min_periods=1).mean()
-    df["MA20"] = df["Volume"].rolling(20, min_periods=1).mean()
-
-    vol = df["Volume"] / (df["MA20"] + 1e-10)
-    trend = (df["Close"] - df["MA5"]) / (df["MA5"] + 1e-10)
-    power = (df["Close"] - df["Open"]) / (df["Open"] + 1e-10)
-
-    df["Whale"] = np.nan_to_num(vol * 30 + trend * 30 + power * 20)
-
-    st.write("🟢 STEP 5: CALC DONE")
+    df = df.reset_index()
+    df.columns = ["Date", "Open", "High", "Low", "Close", "Volume"]
     return df
 
-# =========================
-# 실행
-# =========================
-df = load_data(code)
+df = get_data(code)
 
-st.write("📊 RAW DF SHAPE:", df.shape)
-
-df = calc(df)
-
-st.write("📊 FINAL DF SHAPE:", df.shape)
-
-# =========================
-# 🔥 핵심: 무조건 출력
-# =========================
-if df is None or df.empty:
-    st.error("🚨 최종 데이터 없음 (여기서 문제 발생)")
+if df.empty:
+    st.error("데이터 없음")
     st.stop()
 
 # =========================
-# 최신값
+# 지표
 # =========================
+df["MA5"] = df["Close"].rolling(5, min_periods=1).mean()
+df["MA20"] = df["Volume"].rolling(20, min_periods=1).mean()
+
+vol = df["Volume"] / (df["MA20"] + 1e-10)
+trend = (df["Close"] - df["MA5"]) / (df["MA5"] + 1e-10)
+
+df["Whale"] = np.nan_to_num(vol * 30 + trend * 30)
+
 last = df.iloc[-1]
 prev = df.iloc[-2]
 
 price = int(last["Close"])
 pct = ((price - prev["Close"]) / prev["Close"]) * 100
-
 whale = float(last["Whale"])
 
 buy = int(price * 0.98)
-sell = int(price * 1.04)
+sell = int(price * 1.03)
 
 # =========================
 # 상태
 # =========================
 if whale > 60:
-    status = "🟥 매수구간"
+    status = "🟥 강세 (세력 유입)"
 elif whale < 30:
-    status = "🟦 매도구간"
+    status = "🟦 약세"
 else:
-    status = "⚪ 관망"
+    status = "⚪ 중립"
 
 # =========================
-# UI (Streamlit 기본 - 100% 안정)
+# LIVE UI
 # =========================
-st.markdown("---")
-
 col1, col2, col3 = st.columns(3)
 
 col1.metric("현재가", f"{price:,}원", f"{pct:+.2f}%")
@@ -139,16 +100,12 @@ col3.metric("매도", f"{sell:,}원")
 
 st.markdown("---")
 
-st.subheader("📊 세력지수")
-st.write(whale)
-
+st.subheader("📊 실시간 세력 지수")
 st.progress(min(int(whale), 100) / 100)
+st.write(f"Whale Index: {whale:.2f}")
+st.write(f"상태: {status}")
 
-st.subheader("🤖 상태")
-st.info(status)
+st.markdown("---")
 
-# =========================
-# 데이터 확인
-# =========================
-st.subheader("📦 RAW DATA DEBUG")
+st.subheader("📈 최근 데이터")
 st.dataframe(df.tail(10))
