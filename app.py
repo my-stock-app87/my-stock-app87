@@ -2,14 +2,13 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from pykrx import stock
-import streamlit.components.v1 as components
 from datetime import datetime
 
 # =========================
 # 페이지 설정
 # =========================
-st.set_page_config(page_title="주식주신 PRO", layout="centered")
-st.title("🔥 주식주신 PRO (절대안죽는버전)")
+st.set_page_config(page_title="주식주신 PRO", layout="wide")
+st.title("🔥 주식주신 PRO (완전 안정 버전)")
 
 # =========================
 # 종목
@@ -17,17 +16,17 @@ st.title("🔥 주식주신 PRO (절대안죽는버전)")
 stocks = {
     "삼성전자": "005930",
     "SK하이닉스": "000660",
-    "LG에너지솔루션": "373220",
     "현대차": "005380",
     "NAVER": "035420",
-    "카카오": "035720"
+    "카카오": "035720",
+    "LG에너지솔루션": "373220"
 }
 
 name = st.selectbox("종목 선택", list(stocks.keys()))
 code = stocks[name]
 
 # =========================
-# 데이터 로딩 (절대안죽는버전)
+# 데이터 로딩 (절대안죽음)
 # =========================
 @st.cache_data(ttl=60)
 def load_data(code):
@@ -46,12 +45,11 @@ def load_data(code):
 
         return df
 
-    except Exception as e:
-        st.write("데이터 오류:", e)
+    except:
         return pd.DataFrame()
 
 # =========================
-# 지표 계산 (절대안죽는 구조)
+# 지표 계산 (완전 방어)
 # =========================
 def calc(df):
     if df is None or df.empty:
@@ -59,14 +57,13 @@ def calc(df):
 
     df = df.copy()
 
-    df["Close"] = df["Close"].fillna(method="ffill")
-    df["Open"] = df["Open"].fillna(method="ffill")
+    df["Close"] = df["Close"].ffill().fillna(0)
+    df["Open"] = df["Open"].ffill().fillna(0)
     df["Volume"] = df["Volume"].fillna(0)
 
     df["MA5"] = df["Close"].rolling(5, min_periods=1).mean()
     df["MA20"] = df["Volume"].rolling(20, min_periods=1).mean()
 
-    # 🔥 NaN 방지 핵심
     vol_ratio = df["Volume"] / (df["MA20"] + 1e-10)
     trend = (df["Close"] - df["MA5"]) / (df["MA5"] + 1e-10)
     power = (df["Close"] - df["Open"]) / (df["Open"] + 1e-10)
@@ -82,17 +79,14 @@ df = load_data(code)
 df = calc(df)
 
 # =========================
-# 🔥 핵심: 무조건 화면 출력
+# 🔥 무조건 화면 유지
 # =========================
 if df is None or df.empty or len(df) < 2:
-
-    st.error("⚠️ 데이터 부족 (하지만 앱은 정상 실행됨)")
-
-    st.info("👉 pykrx에서 데이터가 안 들어오는 상태입니다.")
+    st.error("데이터 없음 (pykrx 문제 or 휴장일)")
     st.stop()
 
 # =========================
-# 최신값
+# 최신 데이터
 # =========================
 last = df.iloc[-1]
 prev = df.iloc[-2]
@@ -110,64 +104,36 @@ sell = int(price * 1.04)
 # =========================
 if whale > 60:
     status = "🟥 매수구간"
-    color = "red"
 elif whale < 30:
     status = "🟦 매도구간"
-    color = "blue"
 else:
     status = "⚪ 관망"
-    color = "gray"
 
 # =========================
-# UI
+# 🔥 UI (Streamlit native - 안정)
 # =========================
-html = f"""
-<table style="width:100%; border-collapse:collapse; font-family:sans-serif;">
+col1, col2, col3 = st.columns(3)
 
-<tr style="background:#f7f7f7;">
-<td style="padding:10px;"><b>현재가</b></td>
-<td style="padding:10px; text-align:right;">
-{price:,}원 ({pct:+.2f}%)
-</td>
-<td style="padding:10px; text-align:right; color:{color}; font-weight:bold;">
-{status}
-</td>
-</tr>
+col1.metric("현재가", f"{price:,}원", f"{pct:+.2f}%")
+col2.metric("매수추천", f"{buy:,}원")
+col3.metric("매도추천", f"{sell:,}원")
 
-<tr>
-<td style="padding:10px;"><b>매수</b></td>
-<td colspan="2" style="padding:10px; text-align:right; color:red;">
-{buy:,}원
-</td>
-</tr>
+st.markdown("---")
 
-<tr style="background:#f7f7f7;">
-<td style="padding:10px;"><b>매도</b></td>
-<td colspan="2" style="padding:10px; text-align:right; color:blue;">
-{sell:,}원
-</td>
-</tr>
+st.subheader("📊 세력 분석")
+st.progress(min(int(whale), 100) / 100)
 
-<tr>
-<td style="padding:10px;"><b>세력지수</b></td>
-<td colspan="2" style="padding:10px; text-align:right;">
-{whale:.1f}
-</td>
-</tr>
-
-</table>
-"""
-
-components.html(html, height=300)
+st.write(f"세력지수: {whale:.1f}")
+st.write(f"상태: {status}")
 
 # =========================
-# AI 해석
+# AI 전략
 # =========================
-st.subheader("🤖 AI 분석")
+st.subheader("🤖 AI 전략")
 
 if whale > 60:
-    st.success("세력 유입 강함 → 단기 상승 가능성")
+    st.success("세력 강한 유입 → 단기 상승 가능성")
 elif whale < 30:
-    st.warning("약세 구간 → 관망 필요")
+    st.warning("약세 구간 → 관망")
 else:
     st.info("중립 구간 → 방향 없음")
