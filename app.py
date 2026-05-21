@@ -8,15 +8,103 @@ from streamlit_autorefresh import st_autorefresh
 # =========================================================
 # 기본 설정
 # =========================================================
-st.set_page_config(page_title="주식주신 PRO", layout="wide")
-
-st.markdown("""
-<h1 style='text-align:center;color:red;'>
-🔥 주식주신 PRO
-</h1>
-""", unsafe_allow_html=True)
+st.set_page_config(
+    page_title="주식주신 PRO",
+    layout="centered"
+)
 
 st_autorefresh(interval=5000, key="refresh")
+
+# =========================================================
+# 모바일 스타일
+# =========================================================
+st.markdown("""
+<style>
+
+html, body, [class*="css"] {
+    font-family: Pretendard, sans-serif;
+}
+
+/* 전체 여백 */
+.block-container{
+    padding-top:1rem;
+    padding-bottom:3rem;
+    padding-left:0.7rem;
+    padding-right:0.7rem;
+}
+
+/* 제목 */
+.main-title{
+    text-align:center;
+    font-size:34px;
+    font-weight:900;
+    color:#ff2e2e;
+    margin-bottom:5px;
+}
+
+/* 부제목 */
+.sub-title{
+    text-align:center;
+    color:gray;
+    font-size:14px;
+    margin-bottom:25px;
+}
+
+/* 카드 */
+.card{
+    background:white;
+    padding:16px;
+    border-radius:18px;
+    border:1px solid #ececec;
+    box-shadow:0 2px 8px rgba(0,0,0,0.05);
+    margin-bottom:14px;
+}
+
+/* 메뉴 버튼 */
+div.stButton > button{
+    width:100%;
+    height:65px;
+    border-radius:18px;
+    border:none;
+    font-size:18px;
+    font-weight:800;
+    background:#f5f5f5;
+}
+
+div.stButton > button:hover{
+    background:#ffecec;
+    color:red;
+}
+
+/* metric */
+[data-testid="metric-container"]{
+    border-radius:16px;
+    padding:12px;
+    background:white;
+    border:1px solid #eee;
+}
+
+/* dataframe */
+[data-testid="stDataFrame"]{
+    border-radius:16px;
+    overflow:hidden;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# 타이틀
+# =========================================================
+st.markdown("""
+<div class='main-title'>
+🔥 주식주신 PRO
+</div>
+
+<div class='sub-title'>
+AI 기반 급등주 / 반등주 분석 시스템
+</div>
+""", unsafe_allow_html=True)
 
 # =========================================================
 # 종목 리스트
@@ -26,21 +114,25 @@ def stock_list():
     return fdr.StockListing("KRX")[["Code", "Name"]].dropna()
 
 df_stock = stock_list()
+
 names = df_stock["Name"].tolist()
 
 def code(name):
+
     r = df_stock[df_stock["Name"] == name]
+
     return r["Code"].iloc[0] if not r.empty else None
 
 # =========================================================
-# 데이터 가져오기
+# 데이터
 # =========================================================
 @st.cache_data(ttl=10)
 def get_price(c):
+
     return fdr.DataReader(str(c)).tail(120)
 
 # =========================================================
-# 뉴스 가져오기
+# 뉴스
 # =========================================================
 @st.cache_data(ttl=300)
 def get_news(name):
@@ -52,6 +144,7 @@ def get_news(name):
     result = []
 
     for e in feed.entries[:5]:
+
         result.append({
             "title": e.title,
             "link": e.link
@@ -60,37 +153,34 @@ def get_news(name):
     return result
 
 # =========================================================
-# 지표 계산
+# 지표
 # =========================================================
 def ind(df):
 
     df = df.copy()
 
-    # 이동평균
     df["MA5"] = df["Close"].rolling(5).mean()
 
-    # 거래량 배수
-    vol = df["Volume"] / (df["Volume"].rolling(20).mean() + 1e-10)
+    vol = (
+        df["Volume"] /
+        (df["Volume"].rolling(20).mean() + 1e-10)
+    )
 
-    # 추세
     trend = (
         (df["Close"] - df["MA5"]) /
         (df["MA5"] + 1e-10)
     )
 
-    # 양봉 힘
     power = (
-        ((df["Close"] - df["Open"]) /
-        (df["Open"] + 1e-10)) * 100
-    )
+        (df["Close"] - df["Open"]) /
+        (df["Open"] + 1e-10)
+    ) * 100
 
-    # 윗꼬리
     upper_tail = (
         (df["High"] - df["Close"]) /
         (df["High"] - df["Low"] + 1e-10)
     )
 
-    # 세력 점수
     df["Whale"] = np.clip(
         vol * 45 +
         trend * 35 +
@@ -100,7 +190,6 @@ def ind(df):
         100
     )
 
-    # 상승 예측
     std = df["Close"].rolling(5).std()
 
     df["Pred"] = np.clip(
@@ -110,28 +199,18 @@ def ind(df):
         25
     )
 
-    # 적중률
-    df["Acc"] = np.clip(
-        70 + (100 - df["Whale"]) * 0.2,
-        50,
-        97
-    )
+    delta = df["Close"].diff()
 
-    # 체결강도 느낌
-    df["Strength"] = (
-        (df["Close"] - df["Low"]) /
-        (df["High"] - df["Low"] + 1e-10)
-    ) * 100
+    up = delta.clip(lower=0)
+    down = -1 * delta.clip(upper=0)
 
-    # 평균 변동폭
-    tr = df["High"] - df["Low"]
-    avg_tr = tr.rolling(5).mean()
+    ma_up = up.rolling(14).mean()
+    ma_down = down.rolling(14).mean()
 
-    # 매수 / 매도
-    df["Buy"] = df["Close"] - (avg_tr * 0.35)
-    df["Sell"] = df["Close"] + (avg_tr * 0.45)
+    rs = ma_up / (ma_down + 1e-10)
 
-    # 거래대금(억)
+    df["RSI"] = 100 - (100 / (1 + rs))
+
     df["Money"] = (
         df["Close"] * df["Volume"]
     ) / 100000000
@@ -139,168 +218,127 @@ def ind(df):
     return df.dropna()
 
 # =========================================================
-# 분석 멘트
+# 분석멘트
 # =========================================================
 def analysis_text(l):
 
     if l["Whale"] > 70:
-        return "🚀 강한 세력 매집 흐름 감지"
+        return "🚀 강한 세력 매집 흐름"
 
-    elif l["Close"] < l["Buy"]:
-        return "📉 눌림목 구간 → 분할 매수 관심"
+    elif l["RSI"] < 30:
+        return "🎯 과매도 반등 가능성"
 
-    elif l["Close"] > l["Sell"]:
-        return "⚠️ 단기 과열 가능성"
+    elif l["Pred"] > 10:
+        return "🔥 단기 변동성 확대"
 
     else:
         return "📊 박스권 흐름"
 
 # =========================================================
-# 종목 선택
+# 페이지 상태
 # =========================================================
-name = st.selectbox("🔍 종목 선택", names)
-
-c = code(name)
-
-df = ind(get_price(c))
+if "page" not in st.session_state:
+    st.session_state.page = ""
 
 # =========================================================
-# 메인
+# 메인 메뉴
 # =========================================================
-if not df.empty:
+if st.session_state.page == "":
 
-    l = df.iloc[-1]
-    p = df.iloc[-2]
+    st.markdown("""
+    <div class='card'>
 
-    price = int(l["Close"])
+    <h3 style='text-align:center;'>
+    📌 메뉴 선택
+    </h3>
 
-    diff = price - int(p["Close"])
+    </div>
+    """, unsafe_allow_html=True)
 
-    pct = (
-        diff / int(p["Close"])
-    ) * 100
+    col1, col2, col3 = st.columns(3)
 
-    color = "red" if diff > 0 else "blue"
+    with col1:
+        if st.button("🧠 분석"):
+            st.session_state.page = "analysis"
 
-    arrow = "▲" if diff > 0 else "▼"
+    with col2:
+        if st.button("🚀 급등"):
+            st.session_state.page = "surge"
 
-    # =====================================================
-    # 탭
-    # =====================================================
-    tab1, tab2, tab3 = st.tabs([
-        "📊 종합분석",
-        "🚀 세력 급등주",
-        "🎯 내일 반등"
-    ])
+    with col3:
+        if st.button("🎯 반등"):
+            st.session_state.page = "rebound"
 
-    # =====================================================
-    # TAB1
-    # =====================================================
-    with tab1:
+# =========================================================
+# 종합분석
+# =========================================================
+elif st.session_state.page == "analysis":
 
-        # 현재가
-        st.markdown(f"""
-        <div style="
-            text-align:center;
-            padding:20px;
-            background:white;
-            border-radius:18px;
-            border:1px solid #eee;
-            margin-bottom:15px;
-        ">
+    if st.button("⬅️ 메인으로"):
+        st.session_state.page = ""
 
-        <div style="
-            font-size:48px;
-            font-weight:900;
-            color:{color};
-        ">
-            {price:,}원
-        </div>
+    st.markdown("## 🧠 AI 종합분석")
 
-        <div style="
-            font-size:18px;
-            font-weight:700;
-            color:{color};
-        ">
-            {arrow} {diff:+,}원 ({pct:+.2f}%)
-        </div>
+    name = st.selectbox(
+        "종목 선택",
+        names
+    )
 
-        </div>
-        """, unsafe_allow_html=True)
+    c = code(name)
 
-        # HTS 정보 바
-        st.markdown(f"""
-        <div style="
-            background:#f8f9fa;
-            padding:14px;
-            border-radius:14px;
-            font-size:15px;
-            font-weight:800;
-            overflow-x:auto;
-            white-space:nowrap;
-            margin-bottom:15px;
-        ">
+    df = ind(get_price(c))
 
-        🚀 상승예측 {l['Pred']:.1f}% ｜
+    if not df.empty:
 
-        🎯 적중률 {l['Acc']:.1f}% ｜
+        l = df.iloc[-1]
+        p = df.iloc[-2]
 
-        🐳 세력점수 {l['Whale']:.1f}% ｜
+        price = int(l["Close"])
 
-        🔥 체결강도 {l['Strength']:.1f}% ｜
+        diff = price - int(p["Close"])
 
-        💰 거래대금 {int(l['Money'])}억
+        pct = (
+            diff / int(p["Close"])
+        ) * 100
 
-        </div>
-        """, unsafe_allow_html=True)
-
-        # 매수 매도 신호
-        buy_signal = (
-            l["Whale"] > 60 and
-            l["Close"] <= l["Buy"] * 1.02
+        st.metric(
+            "현재가",
+            f"{price:,}원",
+            f"{pct:.2f}%"
         )
 
-        sell_signal = (
-            l["Close"] >= l["Sell"] * 0.98
+        col1, col2 = st.columns(2)
+
+        col1.metric(
+            "세력점수",
+            f"{l['Whale']:.1f}"
         )
 
-        if buy_signal:
-            st.success("🟥 AI 매수 신호 감지")
-
-        elif sell_signal:
-            st.error("🟦 AI 매도 신호 감지")
-
-        else:
-            st.info("⚪ 현재 관망 구간")
-
-        # 종합 분석
-        st.markdown("### 🧠 종합 분석")
+        col2.metric(
+            "RSI",
+            f"{l['RSI']:.1f}"
+        )
 
         st.markdown(f"""
-        <div style="
-            padding:15px;
-            border-radius:15px;
-            background:white;
-            border:1px solid #eee;
-            line-height:1.8;
-        ">
+        <div class='card'>
 
-        {analysis_text(l)}<br><br>
+        <h4>
+        {analysis_text(l)}
+        </h4>
 
-        📈 오늘 최고가 :
-        <b style="color:red;">
+        📈 최고가 :
+        <b style='color:red;'>
         {int(l['High']):,}원
-        </b><br>
+        </b>
 
-        📉 오늘 최저가 :
-        <b style="color:blue;">
+        <br><br>
+
+        📉 최저가 :
+        <b style='color:blue;'>
         {int(l['Low']):,}원
-        </b><br>
+        </b>
 
-        📊 현재 거래량 :
-        <b>
-        {int(l['Volume']):,}주
-        </b><br>
+        <br><br>
 
         💰 거래대금 :
         <b>
@@ -310,157 +348,146 @@ if not df.empty:
         </div>
         """, unsafe_allow_html=True)
 
-        # 차트
-        st.markdown("### 📈 주가 차트")
-
         st.line_chart(df["Close"])
 
-        # 뉴스
         st.markdown("### 📰 관련 뉴스")
 
         news = get_news(name)
 
         for n in news:
+
             st.markdown(
-                f"- [{n['title']}]({n['link']})"
+                f"• [{n['title']}]({n['link']})"
             )
 
-    # =====================================================
-    # TAB2 급등주
-    # =====================================================
-    with tab2:
+# =========================================================
+# 급등중
+# =========================================================
+elif st.session_state.page == "surge":
 
-        st.markdown("## 🚀 세력 급등주 TOP5")
+    if st.button("⬅️ 메인으로"):
+        st.session_state.page = ""
 
-        rows = []
+    st.markdown("## 🚀 실시간 급등포착")
 
-        for n in names:
+    rows = []
 
-            try:
-                c = code(n)
+    for n in names[:200]:
 
-                d = ind(get_price(c))
+        try:
 
-                if d.empty:
-                    continue
+            c = code(n)
 
-                l2 = d.iloc[-1]
-                p2 = d.iloc[-2]
+            d = ind(get_price(c))
 
-                # 3만원 이하
-                if l2["Close"] > 30000:
-                    continue
+            if d.empty:
+                continue
 
-                # 거래량 필터
-                if l2["Volume"] < 300000:
-                    continue
+            l2 = d.iloc[-1]
+            p2 = d.iloc[-2]
 
-                # 거래대금 필터
-                if l2["Money"] < 10:
-                    continue
+            chg = (
+                (l2["Close"] - p2["Close"]) /
+                p2["Close"]
+            ) * 100
 
-                chg = (
-                    (l2["Close"] - p2["Close"]) /
-                    p2["Close"]
-                ) * 100
-
-                score = (
-                    l2["Whale"] * 0.6 +
-                    max(chg, 0) * 8
-                )
+            if (
+                chg > 5 and
+                l2["Money"] > 20 and
+                l2["Close"] < 30000
+            ):
 
                 rows.append({
                     "종목": n,
-                    "현재가": int(l2["Close"]),
                     "등락률": round(chg, 2),
                     "세력": round(l2["Whale"], 1),
-                    "거래대금": f"{int(l2['Money'])}억",
-                    "예상": round(l2["Pred"], 1),
-                    "점수": round(score, 1)
+                    "거래대금": f"{int(l2['Money'])}억"
                 })
 
-            except:
+        except:
+            continue
+
+    result = (
+        pd.DataFrame(rows)
+        .sort_values(
+            "등락률",
+            ascending=False
+        )
+        .head(10)
+    )
+
+    st.dataframe(
+        result,
+        use_container_width=True,
+        hide_index=True
+    )
+
+# =========================================================
+# 내일 반등
+# =========================================================
+elif st.session_state.page == "rebound":
+
+    if st.button("⬅️ 메인으로"):
+        st.session_state.page = ""
+
+    st.markdown("## 🎯 내일 반등 예상")
+
+    rows = []
+
+    for n in names[:200]:
+
+        try:
+
+            c = code(n)
+
+            d = ind(get_price(c))
+
+            if d.empty:
                 continue
 
-        result = (
-            pd.DataFrame(rows)
-            .sort_values("점수", ascending=False)
-            .head(5)
-        )
+            l2 = d.iloc[-1]
+            p2 = d.iloc[-2]
 
-        st.dataframe(
-            result,
-            use_container_width=True
-        )
+            chg = (
+                (l2["Close"] - p2["Close"]) /
+                p2["Close"]
+            ) * 100
 
-    # =====================================================
-    # TAB3 내일 반등
-    # =====================================================
-    with tab3:
+            score = (
+                l2["Whale"] * 0.4 +
+                (40 - l2["RSI"]) * 1.5 +
+                max(-chg * 5, 0)
+            )
 
-        st.markdown("## 🎯 내일 반등 예상 TOP5")
-
-        rows = []
-
-        for n in names:
-
-            try:
-                c = code(n)
-
-                d = ind(get_price(c))
-
-                if d.empty:
-                    continue
-
-                l2 = d.iloc[-1]
-                p2 = d.iloc[-2]
-
-                # 3만원 이하
-                if l2["Close"] > 30000:
-                    continue
-
-                # 거래량 필터
-                if l2["Volume"] < 300000:
-                    continue
-
-                # 거래대금 필터
-                if l2["Money"] < 10:
-                    continue
-
-                chg = (
-                    (l2["Close"] - p2["Close"]) /
-                    p2["Close"]
-                ) * 100
-
-                score = (
-                    l2["Whale"] * 0.5 +
-                    l2["Acc"] * 0.3 +
-                    max(-chg * 5, 0)
-                )
+            if (
+                chg < -3 and
+                l2["Whale"] > 50 and
+                l2["RSI"] < 40 and
+                l2["Money"] > 10 and
+                l2["Close"] < 30000
+            ):
 
                 rows.append({
                     "종목": n,
-                    "현재가": int(l2["Close"]),
                     "등락률": round(chg, 2),
-                    "세력": round(l2["Whale"], 1),
-                    "적중": round(l2["Acc"], 1),
-                    "거래대금": f"{int(l2['Money'])}억",
-                    "점수": round(score, 1)
+                    "RSI": round(l2["RSI"], 1),
+                    "반등점수": round(score, 1)
                 })
 
-            except:
-                continue
+        except:
+            continue
 
-        result = (
-            pd.DataFrame(rows)
-            .sort_values("점수", ascending=False)
-            .head(5)
+    result = (
+        pd.DataFrame(rows)
+        .sort_values(
+            "반등점수",
+            ascending=False
         )
+        .head(10)
+    )
 
-        st.dataframe(
-            result,
-            use_container_width=True
-        )
-
-else:
-    st.warning("데이터 부족")
+    st.dataframe(
+        result,
+        use_container_width=True,
+        hide_index=True
+    )
