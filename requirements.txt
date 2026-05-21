@@ -1,6 +1,2 @@
 streamlit
-pandas
-numpy
-requests
-feedparser
-beautifulsoup4
+yfinance
