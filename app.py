@@ -2,6 +2,15 @@ import streamlit as st
 import pandas as pd
 
 # =====================================================
+# (필수) 데이터가 이미 있다고 가정
+# df_stock, get_price 는 위에서 정의되어 있어야 함
+# =====================================================
+
+# ✅ 종목 리스트 생성 (이게 없어서 에러 발생한 것)
+names = df_stock["Name"].dropna().unique().tolist()
+
+
+# =====================================================
 # 종목 코드 찾기
 # =====================================================
 def code(name):
@@ -31,7 +40,7 @@ def ind(df):
 
 
 # =====================================================
-# 사이드바 UI
+# 사이드바
 # =====================================================
 with st.sidebar:
     st.header("🔍 종목 및 기간 설정")
@@ -43,21 +52,19 @@ with st.sidebar:
 
 
 # =====================================================
-# 데이터 로딩
+# 데이터 처리
 # =====================================================
 selected_code = code(selected_name)
 
 if selected_code is None:
-    st.error("종목 코드를 찾을 수 없습니다.")
+    st.error("종목 코드 없음")
     st.stop()
 
 raw_df = get_price(selected_code)
 df_processed = ind(raw_df)
 
-
-# 데이터 부족 방지
-if df_processed is None or df_processed.empty or len(df_processed) < 2:
-    st.warning("데이터가 부족합니다 (최소 2개 이상 필요)")
+if df_processed is None or df_processed.empty:
+    st.warning("데이터 없음")
     st.stop()
 
 
@@ -75,57 +82,23 @@ ratio = (diff / prev_price) * 100
 
 
 # =====================================================
-# 상단 메트릭
+# UI
 # =====================================================
 col1, col2 = st.columns(2)
 
 with col1:
-    st.metric(
-        "현재가",
-        f"{current_price:,} 원",
-        f"{diff:,} 원 ({ratio:.2f}%)"
-    )
+    st.metric("현재가", f"{current_price:,}", f"{diff:,} ({ratio:.2f}%)")
 
 with col2:
-    rsi_val = latest["RSI"]
-    rsi_val = float(rsi_val) if pd.notna(rsi_val) else 0
-
-    if rsi_val >= 70:
-        rsi_status = "🔴 과매수"
-    elif rsi_val <= 30:
-        rsi_status = "🔵 과매도"
-    else:
-        rsi_status = "🟢 보통"
-
-    st.metric("RSI(14)", f"{rsi_val:.2f}", rsi_status)
-
-
-# =====================================================
-# 이동평균
-# =====================================================
-col3, col4 = st.columns(2)
-
-with col3:
-    st.metric("적정매수가(MA5)", f"{int(latest['MA5']):,} 원")
-
-with col4:
-    st.metric("단기목표(MA20)", f"{int(latest['MA20']):,} 원")
+    rsi_val = float(latest["RSI"]) if pd.notna(latest["RSI"]) else 0
+    status = "🔴 과매수" if rsi_val >= 70 else "🔵 과매도" if rsi_val <= 30 else "🟢 보통"
+    st.metric("RSI", f"{rsi_val:.2f}", status)
 
 
 st.markdown("---")
 
-
-# =====================================================
-# 차트
-# =====================================================
 df_visual = df_processed.tail(period)
 
-st.subheader(f"📈 {selected_name} ({selected_code})")
-
 st.line_chart(df_visual[["Close", "MA5", "MA20"]])
-
-st.subheader("📊 거래량")
 st.bar_chart(df_visual["Volume"])
-
-st.subheader("⏱️ RSI")
 st.line_chart(df_visual["RSI"])
