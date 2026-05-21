@@ -7,8 +7,8 @@ from datetime import datetime
 # =========================
 # 페이지 설정
 # =========================
-st.set_page_config(page_title="주식주신 PRO", layout="wide")
-st.title("🔥 주식주신 PRO (완전 안정 버전)")
+st.set_page_config(page_title="주식주신 PRO DEBUG", layout="wide")
+st.title("🔥 주식주신 PRO (DEBUG 최종버전)")
 
 # =========================
 # 종목
@@ -18,17 +18,20 @@ stocks = {
     "SK하이닉스": "000660",
     "현대차": "005380",
     "NAVER": "035420",
-    "카카오": "035720",
-    "LG에너지솔루션": "373220"
+    "카카오": "035720"
 }
 
 name = st.selectbox("종목 선택", list(stocks.keys()))
 code = stocks[name]
 
 # =========================
-# 데이터 로딩 (절대안죽음)
+# 🔥 STEP 1: 무조건 실행 확인
 # =========================
-@st.cache_data(ttl=60)
+st.write("🟢 STEP 1: APP START OK")
+
+# =========================
+# 데이터 로딩
+# =========================
 def load_data(code):
     try:
         df = stock.get_market_ohlcv_by_date(
@@ -37,22 +40,30 @@ def load_data(code):
             code
         )
 
+        st.write("🟡 STEP 2: RAW DATA CALL DONE")
+
         if df is None or df.empty:
+            st.write("❌ RAW DF EMPTY")
             return pd.DataFrame()
 
         df = df.reset_index()
         df.columns = ["Date", "Open", "High", "Low", "Close", "Volume"]
 
+        st.write("🟢 STEP 3: DATA LOADED OK")
         return df
 
-    except:
+    except Exception as e:
+        st.write("❌ ERROR:", e)
         return pd.DataFrame()
 
 # =========================
-# 지표 계산 (완전 방어)
+# 계산
 # =========================
 def calc(df):
+    st.write("🟡 STEP 4: CALC START")
+
     if df is None or df.empty:
+        st.write("❌ CALC INPUT EMPTY")
         return df
 
     df = df.copy()
@@ -64,29 +75,35 @@ def calc(df):
     df["MA5"] = df["Close"].rolling(5, min_periods=1).mean()
     df["MA20"] = df["Volume"].rolling(20, min_periods=1).mean()
 
-    vol_ratio = df["Volume"] / (df["MA20"] + 1e-10)
+    vol = df["Volume"] / (df["MA20"] + 1e-10)
     trend = (df["Close"] - df["MA5"]) / (df["MA5"] + 1e-10)
     power = (df["Close"] - df["Open"]) / (df["Open"] + 1e-10)
 
-    df["Whale"] = np.nan_to_num(vol_ratio * 30 + trend * 30 + power * 20)
+    df["Whale"] = np.nan_to_num(vol * 30 + trend * 30 + power * 20)
 
+    st.write("🟢 STEP 5: CALC DONE")
     return df
 
 # =========================
 # 실행
 # =========================
 df = load_data(code)
+
+st.write("📊 RAW DF SHAPE:", df.shape)
+
 df = calc(df)
 
+st.write("📊 FINAL DF SHAPE:", df.shape)
+
 # =========================
-# 🔥 무조건 화면 유지
+# 🔥 핵심: 무조건 출력
 # =========================
-if df is None or df.empty or len(df) < 2:
-    st.error("데이터 없음 (pykrx 문제 or 휴장일)")
+if df is None or df.empty:
+    st.error("🚨 최종 데이터 없음 (여기서 문제 발생)")
     st.stop()
 
 # =========================
-# 최신 데이터
+# 최신값
 # =========================
 last = df.iloc[-1]
 prev = df.iloc[-2]
@@ -110,30 +127,28 @@ else:
     status = "⚪ 관망"
 
 # =========================
-# 🔥 UI (Streamlit native - 안정)
+# UI (Streamlit 기본 - 100% 안정)
 # =========================
+st.markdown("---")
+
 col1, col2, col3 = st.columns(3)
 
 col1.metric("현재가", f"{price:,}원", f"{pct:+.2f}%")
-col2.metric("매수추천", f"{buy:,}원")
-col3.metric("매도추천", f"{sell:,}원")
+col2.metric("매수", f"{buy:,}원")
+col3.metric("매도", f"{sell:,}원")
 
 st.markdown("---")
 
-st.subheader("📊 세력 분석")
+st.subheader("📊 세력지수")
+st.write(whale)
+
 st.progress(min(int(whale), 100) / 100)
 
-st.write(f"세력지수: {whale:.1f}")
-st.write(f"상태: {status}")
+st.subheader("🤖 상태")
+st.info(status)
 
 # =========================
-# AI 전략
+# 데이터 확인
 # =========================
-st.subheader("🤖 AI 전략")
-
-if whale > 60:
-    st.success("세력 강한 유입 → 단기 상승 가능성")
-elif whale < 30:
-    st.warning("약세 구간 → 관망")
-else:
-    st.info("중립 구간 → 방향 없음")
+st.subheader("📦 RAW DATA DEBUG")
+st.dataframe(df.tail(10))
