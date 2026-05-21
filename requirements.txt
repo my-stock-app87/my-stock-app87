@@ -5,3 +5,5 @@ yfinance
 requests
 beautifulsoup4
 lxml
+FinanceDataReader
+streamlit
