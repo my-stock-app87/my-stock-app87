@@ -5,13 +5,13 @@ import yfinance as yf
 from concurrent.futures import ThreadPoolExecutor
 
 # =========================================================
-# 설정
+# 기본 설정
 # =========================================================
-st.set_page_config(page_title="시장 전체현황", layout="wide")
-st.title("🔥 전체 시장 현황 스캐너")
+st.set_page_config(page_title="주식 전체 + 검색", layout="wide")
+st.title("🔥 전체시장 + 종목검색 실시간 대시보드")
 
 # =========================================================
-# 핵심 종목 (실제 서비스도 이 방식 씀)
+# 대표 종목 (시장 전체 분위기용)
 # =========================================================
 STOCKS = {
     "삼성전자": "005930.KS",
@@ -20,21 +20,18 @@ STOCKS = {
     "기아": "000270.KS",
     "NAVER": "035420.KS",
     "카카오": "035720.KS",
-    "셀트리온": "068270.KS",
     "POSCO홀딩스": "005490.KS",
     "에코프로": "086520.KQ",
     "에코프로비엠": "247540.KQ",
     "HLB": "028300.KQ",
-    "한화에어로스페이스": "012450.KS",
-    "두산에너빌리티": "034020.KS",
 }
 
 # =========================================================
 # 데이터
 # =========================================================
 @st.cache_data(ttl=60)
-def get_data(ticker):
-    df = yf.Ticker(ticker).history(period="6mo", interval="1d")
+def get_price(ticker):
+    df = yf.Ticker(ticker).history(period="6mo")
     return df.dropna() if not df.empty else pd.DataFrame()
 
 # =========================================================
@@ -49,7 +46,6 @@ def make(df):
     df["MA5"] = df["Close"].rolling(5).mean()
     df["VOL20"] = df["Volume"].rolling(20).mean()
 
-    # RSI
     delta = df["Close"].diff()
     up = delta.clip(lower=0)
     down = -delta.clip(upper=0)
@@ -57,28 +53,19 @@ def make(df):
     rs = up.rolling(14).mean() / (down.rolling(14).mean() + 1e-10)
     df["RSI"] = 100 - (100 / (1 + rs))
 
-    # 세력
-    vol_power = df["Volume"] / (df["VOL20"] + 1e-10)
-
-    trend = (df["Close"] - df["MA5"]) / (df["MA5"] + 1e-10)
-
-    candle = (df["Close"] - df["Open"]) / (df["Open"] + 1e-10)
-
     df["Whale"] = np.clip(
-        vol_power * 40 +
-        trend * 50 +
-        candle * 10,
+        (df["Volume"] / (df["VOL20"] + 1e-10)) * 40 +
+        ((df["Close"] - df["MA5"]) / (df["MA5"] + 1e-10)) * 50,
         0, 100
     )
 
     return df.dropna()
 
 # =========================================================
-# 분석 함수
+# 시장 스캔
 # =========================================================
-def analyze(name, ticker):
-
-    df = get_data(ticker)
+def scan(name, ticker):
+    df = get_price(ticker)
     df = make(df)
 
     if df is None or df.empty:
@@ -87,19 +74,7 @@ def analyze(name, ticker):
     l = df.iloc[-1]
     p = df.iloc[-2]
 
-    change = ((l["Close"] - p["Close"]) / p["Close"]) * 100
-
-    # 시장 분류
-    if l["Whale"] > 75 and change > 3:
-        status = "🚀 급등"
-    elif l["RSI"] < 35 and change < 0:
-        status = "🎯 반등"
-    elif l["RSI"] > 80:
-        status = "⚠️ 과열"
-    elif l["Whale"] > 70:
-        status = "🐳 세력유입"
-    else:
-        status = "⚪ 관망"
+    change = (l["Close"] - p["Close"]) / p["Close"] * 100
 
     return {
         "종목": name,
@@ -107,20 +82,15 @@ def analyze(name, ticker):
         "등락률": round(change, 2),
         "세력": round(l["Whale"], 1),
         "RSI": round(l["RSI"], 1),
-        "상태": status
     }
 
 # =========================================================
-# 실행
+# 1️⃣ 전체 시장 분석
 # =========================================================
 results = []
 
-with ThreadPoolExecutor(max_workers=8) as ex:
-    futures = [
-        ex.submit(analyze, name, ticker)
-        for name, ticker in STOCKS.items()
-    ]
-
+with ThreadPoolExecutor(max_workers=10) as ex:
+    futures = [ex.submit(scan, n, t) for n, t in STOCKS.items()]
     for f in futures:
         r = f.result()
         if r:
@@ -128,50 +98,55 @@ with ThreadPoolExecutor(max_workers=8) as ex:
 
 df = pd.DataFrame(results)
 
-# =========================================================
-# 시장 요약
-# =========================================================
-st.subheader("📊 시장 요약")
+st.subheader("📊 시장 전체 현황")
 
-up = len(df[df["등락률"] > 0])
-down = len(df[df["등락률"] < 0])
+col1, col2 = st.columns(2)
+col1.metric("상승 종목", len(df[df["등락률"] > 0]))
+col2.metric("하락 종목", len(df[df["등락률"] < 0]))
 
-st.metric("상승 종목", up)
-st.metric("하락 종목", down)
+st.dataframe(df, use_container_width=True)
 
 # =========================================================
-# 분류 테이블
+# 2️⃣ 종목 검색 기능 (핵심)
 # =========================================================
-st.subheader("🚀 급등 / 🎯 반등 / 🐳 세력 / ⚠️ 과열")
+st.subheader("🔍 종목 검색")
 
-st.dataframe(df.sort_values("세력", ascending=False), use_container_width=True)
+query = st.text_input("종목명 입력 (예: 삼성전자, NAVER, TSLA)")
 
-# =========================================================
-# 급등
-# =========================================================
-st.subheader("🚀 급등 TOP")
+if query:
 
-st.dataframe(
-    df[df["상태"] == "🚀 급등"]
-    .sort_values("등락률", ascending=False)
-)
+    ticker_map = {
+        "삼성전자": "005930.KS",
+        "SK하이닉스": "000660.KS",
+        "NAVER": "035420.KS",
+        "카카오": "035720.KS",
+        "현대차": "005380.KS",
+        "기아": "000270.KS",
+        "테슬라": "TSLA",
+        "애플": "AAPL",
+    }
 
-# =========================================================
-# 반등
-# =========================================================
-st.subheader("🎯 반등 TOP")
+    ticker = ticker_map.get(query)
 
-st.dataframe(
-    df[df["상태"] == "🎯 반등"]
-    .sort_values("RSI")
-)
+    if ticker:
 
-# =========================================================
-# 과열
-# =========================================================
-st.subheader("⚠️ 과열")
+        d = get_price(ticker)
 
-st.dataframe(
-    df[df["상태"] == "⚠️ 과열"]
-    .sort_values("RSI", ascending=False)
-)
+        if not d.empty:
+
+            last = d.iloc[-1]
+            prev = d.iloc[-2]
+
+            price = int(last["Close"])
+            pct = (price - prev["Close"]) / prev["Close"] * 100
+
+            st.success(f"""
+            📌 {query} 현재가: {price:,}  
+            📈 등락률: {pct:+.2f}%  
+            📊 거래량: {int(last['Volume']):,}
+            """)
+
+            st.line_chart(d["Close"])
+
+    else:
+        st.warning("지원되지 않는 종목입니다 (현재는 일부만 가능)")
