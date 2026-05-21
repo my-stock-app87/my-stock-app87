@@ -3,64 +3,59 @@ import pandas as pd
 import numpy as np
 from pykrx import stock
 import streamlit.components.v1 as components
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # =========================
 # 페이지 설정
 # =========================
 st.set_page_config(page_title="주식주신 PRO", layout="centered")
-st.markdown("## 🔥 주식주신 PRO (안정버전)")
+st.title("🔥 주식주신 PRO (절대안죽는버전)")
 
 # =========================
-# 종목 리스트 (KRX 기준)
+# 종목
 # =========================
-BUILTIN_STOCKS = {
+stocks = {
     "삼성전자": "005930",
     "SK하이닉스": "000660",
     "LG에너지솔루션": "373220",
-    "삼성바이오로직스": "207940",
     "현대차": "005380",
-    "기아": "000270",
-    "셀트리온": "068270",
-    "카카오": "035720",
     "NAVER": "035420",
-    "에코프로비엠": "247540"
+    "카카오": "035720"
 }
 
-names = list(BUILTIN_STOCKS.keys())
+name = st.selectbox("종목 선택", list(stocks.keys()))
+code = stocks[name]
 
 # =========================
-# 데이터 로딩 (pykrx - 안정형)
+# 데이터 로딩 (절대안죽는버전)
 # =========================
 @st.cache_data(ttl=60)
-def get_data(code):
+def load_data(code):
     try:
-        end = datetime.today().strftime("%Y%m%d")
-        start = (datetime.today() - timedelta(days=180)).strftime("%Y%m%d")
+        df = stock.get_market_ohlcv_by_date(
+            "20240101",
+            datetime.today().strftime("%Y%m%d"),
+            code
+        )
 
-        df = stock.get_market_ohlcv_by_date(start, end, code)
-
-        if df is None or len(df) == 0:
+        if df is None or df.empty:
             return pd.DataFrame()
 
         df = df.reset_index()
-        df.rename(columns={
-            "시가": "Open",
-            "종가": "Close",
-            "거래량": "Volume"
-        }, inplace=True)
+        df.columns = ["Date", "Open", "High", "Low", "Close", "Volume"]
 
         return df
 
-    except:
+    except Exception as e:
+        st.write("데이터 오류:", e)
         return pd.DataFrame()
 
 # =========================
-# 기술적 지표 (안정형)
+# 지표 계산 (절대안죽는 구조)
 # =========================
-def ind(df):
+def calc(df):
     if df is None or df.empty:
-        return pd.DataFrame()
+        return df
 
     df = df.copy()
 
@@ -69,123 +64,110 @@ def ind(df):
     df["Volume"] = df["Volume"].fillna(0)
 
     df["MA5"] = df["Close"].rolling(5, min_periods=1).mean()
-    df["MA20_Vol"] = df["Volume"].rolling(20, min_periods=1).mean()
+    df["MA20"] = df["Volume"].rolling(20, min_periods=1).mean()
 
-    vol = df["Volume"] / (df["MA20_Vol"] + 1e-10)
+    # 🔥 NaN 방지 핵심
+    vol_ratio = df["Volume"] / (df["MA20"] + 1e-10)
     trend = (df["Close"] - df["MA5"]) / (df["MA5"] + 1e-10)
     power = (df["Close"] - df["Open"]) / (df["Open"] + 1e-10)
 
-    df["Whale"] = np.clip(vol * 35 + trend * 30 + power * 20, 0, 100)
+    df["Whale"] = np.nan_to_num(vol_ratio * 30 + trend * 30 + power * 20)
 
     return df
 
 # =========================
-# UI
+# 실행
 # =========================
-st.markdown("## 🧠 종합분석")
-
-name = st.selectbox("종목 선택", names)
-code = BUILTIN_STOCKS[name]
-
-df = get_data(code)
-df = ind(df)
+df = load_data(code)
+df = calc(df)
 
 # =========================
-# 데이터 체크 (무조건 UI 유지)
+# 🔥 핵심: 무조건 화면 출력
 # =========================
 if df is None or df.empty or len(df) < 2:
-    st.error("⚠️ 데이터 부족 (pykrx 조회 실패)")
-    st.write(df)
+
+    st.error("⚠️ 데이터 부족 (하지만 앱은 정상 실행됨)")
+
+    st.info("👉 pykrx에서 데이터가 안 들어오는 상태입니다.")
     st.stop()
 
 # =========================
-# 최신 데이터
+# 최신값
 # =========================
-l = df.iloc[-1]
-p = df.iloc[-2]
+last = df.iloc[-1]
+prev = df.iloc[-2]
 
-price = int(l["Close"])
-pct = ((price - p["Close"]) / (p["Close"] + 1e-10)) * 100
+price = int(last["Close"])
+pct = ((price - prev["Close"]) / prev["Close"]) * 100
 
-buy_price = int(price * 0.98)
-sell_price = int(price * 1.04)
+whale = float(last["Whale"])
 
-whale = float(l["Whale"])
-vol_pct = ((l["Volume"] - p["Volume"]) / (p["Volume"] + 1e-10)) * 100
-up_prob = np.clip(whale * 0.7, 0, 95)
+buy = int(price * 0.98)
+sell = int(price * 1.04)
 
 # =========================
-# 상태 판단
+# 상태
 # =========================
-if whale >= 65 and vol_pct > 0:
+if whale > 60:
     status = "🟥 매수구간"
-    color = "#ff4d4d"
-elif whale < 35:
+    color = "red"
+elif whale < 30:
     status = "🟦 매도구간"
-    color = "#4d79ff"
+    color = "blue"
 else:
     status = "⚪ 관망"
-    color = "#888888"
+    color = "gray"
 
 # =========================
-# HTML UI (안정형)
+# UI
 # =========================
-html_code = f"""
-<table style="width:100%; border-collapse:collapse; font-family:sans-serif; border:1px solid #ddd; border-radius:10px; overflow:hidden;">
+html = f"""
+<table style="width:100%; border-collapse:collapse; font-family:sans-serif;">
 
 <tr style="background:#f7f7f7;">
-    <td style="padding:10px; font-weight:800;">현재가</td>
-    <td style="padding:10px; text-align:right;">
-        {price:,}원 ({pct:+.2f}%)
-    </td>
-    <td style="text-align:right; font-weight:900; color:{color};">{status}</td>
+<td style="padding:10px;"><b>현재가</b></td>
+<td style="padding:10px; text-align:right;">
+{price:,}원 ({pct:+.2f}%)
+</td>
+<td style="padding:10px; text-align:right; color:{color}; font-weight:bold;">
+{status}
+</td>
 </tr>
 
 <tr>
-    <td style="padding:10px; font-weight:800;">매수추천</td>
-    <td colspan="2" style="padding:10px; text-align:right; color:#ff4d4d; font-weight:800;">
-        {buy_price:,}원
-    </td>
+<td style="padding:10px;"><b>매수</b></td>
+<td colspan="2" style="padding:10px; text-align:right; color:red;">
+{buy:,}원
+</td>
 </tr>
 
 <tr style="background:#f7f7f7;">
-    <td style="padding:10px; font-weight:800;">매도추천</td>
-    <td colspan="2" style="padding:10px; text-align:right; color:#4d79ff; font-weight:800;">
-        {sell_price:,}원
-    </td>
+<td style="padding:10px;"><b>매도</b></td>
+<td colspan="2" style="padding:10px; text-align:right; color:blue;">
+{sell:,}원
+</td>
 </tr>
 
 <tr>
-    <td style="padding:10px; font-weight:800;">세력유입</td>
-    <td colspan="2" style="padding:10px; text-align:right;">
-        {whale:.1f}%
-    </td>
-</tr>
-
-<tr style="background:#f7f7f7;">
-    <td style="padding:10px; font-weight:800;">상승확률</td>
-    <td colspan="2" style="padding:10px; text-align:right; color:#e67e22;">
-        {up_prob:.1f}%
-    </td>
+<td style="padding:10px;"><b>세력지수</b></td>
+<td colspan="2" style="padding:10px; text-align:right;">
+{whale:.1f}
+</td>
 </tr>
 
 </table>
 """
 
-components.html(html_code, height=320, scrolling=True)
+components.html(html, height=300)
 
 # =========================
-# AI 전략
+# AI 해석
 # =========================
-st.markdown("### 🤖 AI 투자 전략")
+st.subheader("🤖 AI 분석")
 
-if whale >= 70:
-    ai = "🚀 세력 강한 유입 → 단기 급등 가능성 매우 높음"
-elif whale >= 60:
-    ai = "📊 세력 초기 유입 → 분할매수 전략"
-elif whale < 35:
-    ai = "📉 약세 → 관망 / 손절 우선"
+if whale > 60:
+    st.success("세력 유입 강함 → 단기 상승 가능성")
+elif whale < 30:
+    st.warning("약세 구간 → 관망 필요")
 else:
-    ai = "⚪ 횡보 → 기다림 구간"
-
-st.info(ai)
+    st.info("중립 구간 → 방향 없음")
