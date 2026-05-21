@@ -1,38 +1,38 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import FinanceDataReader as fdr
 import yfinance as yf
 from concurrent.futures import ThreadPoolExecutor
 
 # =========================================================
-# 기본 설정
+# 설정
 # =========================================================
-st.set_page_config(page_title="주식 전체 + 검색", layout="wide")
-st.title("🔥 전체시장 + 종목검색 실시간 대시보드")
+st.set_page_config(page_title="전체시장 스캐너", layout="wide")
+st.title("🔥 KRX 전체시장 실시간 스캐너")
 
 # =========================================================
-# 대표 종목 (시장 전체 분위기용)
+# KRX 전체 종목 가져오기 (진짜 전체)
 # =========================================================
-STOCKS = {
-    "삼성전자": "005930.KS",
-    "SK하이닉스": "000660.KS",
-    "현대차": "005380.KS",
-    "기아": "000270.KS",
-    "NAVER": "035420.KS",
-    "카카오": "035720.KS",
-    "POSCO홀딩스": "005490.KS",
-    "에코프로": "086520.KQ",
-    "에코프로비엠": "247540.KQ",
-    "HLB": "028300.KQ",
-}
+@st.cache_data(ttl=86400)
+def load_krx():
+    df = fdr.StockListing("KRX")
+    df = df[["Code", "Name"]].dropna()
+    df["Ticker"] = df["Code"].astype(str).str.zfill(6) + ".KS"
+    return df
+
+stocks = load_krx()
 
 # =========================================================
 # 데이터
 # =========================================================
 @st.cache_data(ttl=60)
 def get_price(ticker):
-    df = yf.Ticker(ticker).history(period="6mo")
-    return df.dropna() if not df.empty else pd.DataFrame()
+    try:
+        df = yf.Ticker(ticker).history(period="6mo")
+        return df.dropna()
+    except:
+        return pd.DataFrame()
 
 # =========================================================
 # 지표
@@ -62,10 +62,14 @@ def make(df):
     return df.dropna()
 
 # =========================================================
-# 시장 스캔
+# 분석
 # =========================================================
-def scan(name, ticker):
-    df = get_price(ticker)
+def analyze(row):
+
+    code = row["Ticker"]
+    name = row["Name"]
+
+    df = get_price(code)
     df = make(df)
 
     if df is None or df.empty:
@@ -85,68 +89,77 @@ def scan(name, ticker):
     }
 
 # =========================================================
-# 1️⃣ 전체 시장 분석
+# 필터 (전체 돌리면 느리니까 현실적 필터)
 # =========================================================
+stocks = stocks.head(300)   # ← 실전 핵심 (속도 필터)
+
 results = []
 
+progress = st.progress(0)
+
 with ThreadPoolExecutor(max_workers=10) as ex:
-    futures = [ex.submit(scan, n, t) for n, t in STOCKS.items()]
-    for f in futures:
+
+    futures = [
+        ex.submit(analyze, row)
+        for _, row in stocks.iterrows()
+    ]
+
+    for i, f in enumerate(futures):
+
         r = f.result()
+
         if r:
             results.append(r)
 
+        progress.progress((i+1)/len(futures))
+
+# =========================================================
+# 결과
+# =========================================================
 df = pd.DataFrame(results)
 
-st.subheader("📊 시장 전체 현황")
+st.subheader("📊 전체 시장 현황")
 
-col1, col2 = st.columns(2)
-col1.metric("상승 종목", len(df[df["등락률"] > 0]))
-col2.metric("하락 종목", len(df[df["등락률"] < 0]))
+col1, col2, col3 = st.columns(3)
 
-st.dataframe(df, use_container_width=True)
+col1.metric("상승", len(df[df["등락률"] > 0]))
+col2.metric("하락", len(df[df["등락률"] < 0]))
+col3.metric("세력강함", len(df[df["세력"] > 70]))
 
 # =========================================================
-# 2️⃣ 종목 검색 기능 (핵심)
+# 전체 테이블
 # =========================================================
-st.subheader("🔍 종목 검색")
+st.dataframe(
+    df.sort_values("세력", ascending=False),
+    use_container_width=True
+)
 
-query = st.text_input("종목명 입력 (예: 삼성전자, NAVER, TSLA)")
+# =========================================================
+# 급등 TOP
+# =========================================================
+st.subheader("🚀 급등 TOP")
 
-if query:
+st.dataframe(
+    df.sort_values("등락률", ascending=False).head(20),
+    use_container_width=True
+)
 
-    ticker_map = {
-        "삼성전자": "005930.KS",
-        "SK하이닉스": "000660.KS",
-        "NAVER": "035420.KS",
-        "카카오": "035720.KS",
-        "현대차": "005380.KS",
-        "기아": "000270.KS",
-        "테슬라": "TSLA",
-        "애플": "AAPL",
-    }
+# =========================================================
+# 세력 TOP
+# =========================================================
+st.subheader("🐳 세력 TOP")
 
-    ticker = ticker_map.get(query)
+st.dataframe(
+    df.sort_values("세력", ascending=False).head(20),
+    use_container_width=True
+)
 
-    if ticker:
+# =========================================================
+# 반등 TOP
+# =========================================================
+st.subheader("🎯 반등 TOP")
 
-        d = get_price(ticker)
-
-        if not d.empty:
-
-            last = d.iloc[-1]
-            prev = d.iloc[-2]
-
-            price = int(last["Close"])
-            pct = (price - prev["Close"]) / prev["Close"] * 100
-
-            st.success(f"""
-            📌 {query} 현재가: {price:,}  
-            📈 등락률: {pct:+.2f}%  
-            📊 거래량: {int(last['Volume']):,}
-            """)
-
-            st.line_chart(d["Close"])
-
-    else:
-        st.warning("지원되지 않는 종목입니다 (현재는 일부만 가능)")
+st.dataframe(
+    df[df["RSI"] < 35].sort_values("세력", ascending=False).head(20),
+    use_container_width=True
+)
