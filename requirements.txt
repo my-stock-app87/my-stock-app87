@@ -2,4 +2,6 @@ streamlit
 pandas
 numpy
 yfinance
-FinanceDataReader
+requests
+beautifulsoup4
+lxml
