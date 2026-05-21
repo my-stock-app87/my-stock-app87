@@ -1,3 +1,6 @@
+import streamlit as st
+import numpy as np
+
 st.markdown("## 🧠 종합분석")
 
 name = st.selectbox("종목 선택", names)
@@ -36,43 +39,49 @@ if not df.empty:
         status_color = "#999"
 
     # =====================================================
-    # 🔥 HTS 카드 UI (모바일 최적화 버전) - 문자열 공백 교정 완료
+    # 🔥 HTS 카드 UI (충돌 방지를 위한 독립 문자열 맵핑 방식)
     # =====================================================
-    card_html = f"""<div style="width:100%; background:white; border-radius:18px; border:1px solid #e5e5e5; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,0.05); box-sizing:border-box;">
-    <!-- 현재가 -->
-    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #eee;">
-        <div style="font-weight:800;">현재가</div>
-        <div style="font-weight:900; font-size:16px;">{price:,}원</div>
-        <div style="font-weight:900; color:{status_color}; font-size:13px; text-align:right;">{status}<br>({pct:+.2f}%)</div>
-    </div>
-    <!-- 매수 -->
-    <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;">
-        <div style="font-weight:800;">매수추천</div>
-        <div style="color:#ff3b3b; font-weight:900;">{buy_price:,}원</div>
-    </div>
-    <!-- 매도 -->
-    <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;">
-        <div style="font-weight:800;">매도추천</div>
-        <div style="color:#3b6cff; font-weight:900;">{sell_price:,}원</div>
-    </div>
-    <!-- 세력 -->
-    <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;">
-        <div style="font-weight:800;">세력</div>
-        <div style="font-weight:800;">{whale:.1f}%</div>
-    </div>
-    <!-- 거래량 -->
-    <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;">
-        <div style="font-weight:800;">거래량 변화</div>
-        <div style="font-weight:800;">{vol_pct:+.1f}%</div>
-    </div>
-    <!-- 예측 -->
-    <div style="display:flex; justify-content:space-between; padding:10px 0;">
-        <div style="font-weight:800;">예측확률</div>
-        <div style="font-weight:800;">{up_prob:.1f}%</div>
-    </div>
-</div>"""
+    # 데이터를 문자열로 선언하여 안전하게 변환
+    txt_price = f"{price:,}원"
+    txt_pct = f"({pct:+.2f}%)"
+    txt_buy = f"{buy_price:,}원"
+    txt_sell = f"{sell_price:,}원"
+    txt_whale = f"{whale:.1f}%"
+    txt_vol = f"{vol_pct:+.1f}%"
+    txt_prob = f"{up_prob:.1f}%"
 
-    st.markdown(card_html, unsafe_allow_html=True)
+    card_html = """
+    <div style='width:100%; background:white; border-radius:18px; border:1px solid #e5e5e5; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,0.05); box-sizing:border-box;'>
+        <div style='display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #eee;'>
+            <div style='font-weight:800; color:#333;'>현재가</div>
+            <div style='font-weight:900; font-size:16px; color:#111;'>{0}</div>
+            <div style='font-weight:900; color:{1}; font-size:13px; text-align:right;'>{2}<br>{3}</div>
+        </div>
+        <div style='display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;'>
+            <div style='font-weight:800; color:#333;'>매수추천</div>
+            <div style='color:#ff3b3b; font-weight:900;'>{4}</div>
+        </div>
+        <div style='display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;'>
+            <div style='font-weight:800; color:#333;'>매도추천</div>
+            <div style='color:#3b6cff; font-weight:900;'>{5}</div>
+        </div>
+        <div style='display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;'>
+            <div style='font-weight:800; color:#333;'>세력</div>
+            <div style='font-weight:800; color:#111;'>{6}</div>
+        </div>
+        <div style='display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;'>
+            <div style='font-weight:800; color:#333;'>거래량 변화</div>
+            <div style='font-weight:800; color:#111;'>{7}</div>
+        </div>
+        <div style='display:flex; justify-content:space-between; padding:10px 0;'>
+            <div style='font-weight:800; color:#333;'>예측확률</div>
+            <div style='font-weight:800; color:#111;'>{8}</div>
+        </div>
+    </div>
+    """.format(txt_price, status_color, status, txt_pct, txt_buy, txt_sell, txt_whale, txt_vol, txt_prob)
+
+    # st.markdown 대신 안전한 st.components.v1.html 혹은 내장 컴포넌트 처리 구조 사용
+    st.html(card_html)
 
     # =====================================================
     # 🤖 AI 전략 (개선: 더 읽기 쉽게 5줄 고정)
@@ -107,6 +116,5 @@ if not df.empty:
 돌파 여부 확인이 중요합니다.
 현재는 관망이 가장 안전합니다."""
 
-    ai_html = f"""<div style="background:white; padding:16px; border-radius:16px; border:1px solid #eee; line-height:1.7; font-size:14px; white-space:pre-line;">{ai}</div>"""
-
-    st.markdown(ai_html, unsafe_allow_html=True)
+    ai_html = "<div style='background:white; padding:16px; border-radius:16px; border:1px solid #eee; line-height:1.7; font-size:14px; white-space:pre-line; color:#333;'>{0}</div>".format(ai)
+    st.html(ai_html)
