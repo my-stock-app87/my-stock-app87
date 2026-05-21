@@ -1,10 +1,147 @@
 
+import streamlit as st
+import pandas as pd
+import numpy as np
+import FinanceDataReader as fdr
+import feedparser
+from streamlit_autorefresh import st_autorefresh
+
+# =========================================================
+# 설정
+# =========================================================
+st.set_page_config(page_title="주식주신 PRO", layout="centered")
+st_autorefresh(interval=5000, key="refresh")
+
+# =========================================================
+# 스타일 (모바일)
+# =========================================================
+st.markdown("""
+<style>
+
+.block-container{
+    padding: 1rem;
+}
+
+.title{
+    text-align:center;
+    font-size:34px;
+    font-weight:900;
+    color:#ff2e2e;
+}
+
+.card{
+    background:white;
+    padding:16px;
+    border-radius:16px;
+    border:1px solid #eee;
+    margin-bottom:12px;
+}
+
+div.stButton > button{
+    width:100%;
+    height:60px;
+    font-size:18px;
+    font-weight:800;
+    border-radius:16px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# 타이틀
+# =========================================================
+st.markdown("<div class='title'>🔥 주식주신 PRO</div>", unsafe_allow_html=True)
+
+# =========================================================
+# 데이터
+# =========================================================
+@st.cache_data(ttl=3600)
+def stock_list():
+    return fdr.StockListing("KRX")[["Code", "Name"]].dropna()
+
+df_stock = stock_list()
+names = df_stock["Name"].tolist()
+
+def code(name):
+    r = df_stock[df_stock["Name"] == name]
+    return r["Code"].iloc[0] if not r.empty else None
+
+@st.cache_data(ttl=10)
+def get_price(c):
+    return fdr.DataReader(str(c)).tail(120)
+
+@st.cache_data(ttl=300)
+def get_news(name):
+    url = f"https://news.google.com/rss/search?q={name}+주식&hl=ko&gl=KR&ceid=KR:ko"
+    feed = feedparser.parse(url)
+    return [{"title": e.title, "link": e.link} for e in feed.entries[:5]]
+
+# =========================================================
+# 지표
+# =========================================================
+def ind(df):
+
+    df = df.copy()
+
+    df["MA5"] = df["Close"].rolling(5).mean()
+
+    vol = df["Volume"] / (df["Volume"].rolling(20).mean() + 1e-10)
+
+    trend = (df["Close"] - df["MA5"]) / (df["MA5"] + 1e-10)
+
+    power = (df["Close"] - df["Open"]) / (df["Open"] + 1e-10) * 100
+
+    df["Whale"] = np.clip(
+        vol * 45 + trend * 35 + power * 8,
+        0,
+        100
+    )
+
+    df["Pred"] = np.clip(df["Whale"] * 0.2, 0, 25)
+
+    df["RSI"] = 50  # 단순 안정값 (에러 방지용)
+
+    df["Money"] = df["Close"] * df["Volume"] / 1e8
+
+    return df.dropna()
+
+# =========================================================
+# 페이지 상태
+# =========================================================
+if "page" not in st.session_state:
+    st.session_state.page = ""
+
+# =========================================================
+# 메인 메뉴
+# =========================================================
+if st.session_state.page == "":
+
+    st.markdown("<div class='card' style='text-align:center;'>메뉴 선택</div>", unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("🧠 종합분석"):
+            st.session_state.page = "analysis"
+
+    with col2:
+        if st.button("🚀 급등"):
+            st.session_state.page = "surge"
+
+    with col3:
+        if st.button("🎯 반등"):
+            st.session_state.page = "rebound"
+
+# =========================================================
+# 🧠 종합분석
+# =========================================================
 elif st.session_state.page == "analysis":
 
-    if st.button("⬅️ 메인으로"):
+    if st.button("⬅️ 뒤로"):
         st.session_state.page = ""
 
-    st.markdown("## 🧠 AI 종합분석")
+    st.markdown("## 🧠 종합분석")
 
     name = st.selectbox("종목 선택", names)
 
@@ -17,194 +154,77 @@ elif st.session_state.page == "analysis":
         l = df.iloc[-1]
         p = df.iloc[-2]
 
-        # =====================================================
-        # 현재가
-        # =====================================================
         price = int(l["Close"])
         diff = price - int(p["Close"])
-        pct = (diff / int(p["Close"])) * 100
+        pct = diff / p["Close"] * 100
 
-        # =====================================================
-        # 추천 매수 / 매도
-        # =====================================================
-        buy_price = int(l["Close"] * 0.98)
-        sell_price = int(l["Close"] * 1.04)
+        buy = int(price * 0.98)
+        sell = int(price * 1.04)
 
-        # =====================================================
-        # 세력 점수
-        # =====================================================
-        whale = round(l["Whale"], 1)
+        whale = l["Whale"]
 
-        # =====================================================
-        # 거래량 변화 (%)
-        # =====================================================
-        today_volume = int(l["Volume"])
-        yesterday_volume = int(p["Volume"])
+        vol_now = int(l["Volume"])
+        vol_yest = int(p["Volume"])
 
-        volume_pct = (
-            (today_volume - yesterday_volume)
-            / (yesterday_volume + 1e-10)
-        ) * 100
+        vol_pct = (vol_now - vol_yest) / (vol_yest + 1e-10) * 100
 
-        if volume_pct > 10:
-            volume_text = "🔥 거래량 급증 (세력 유입)"
-            volume_color = "red"
+        up_prob = np.clip(whale * 0.7, 0, 95)
 
-        elif volume_pct > 0:
-            volume_text = "📈 거래량 증가"
-            volume_color = "red"
+        predict = "📈 상승" if up_prob > 50 else "📉 하락"
 
-        elif volume_pct < -10:
-            volume_text = "⚠️ 거래량 급감"
-            volume_color = "blue"
-
-        else:
-            volume_text = "📉 거래량 감소"
-            volume_color = "blue"
-
-        # =====================================================
-        # 상승/하락 확률
-        # =====================================================
-        up_prob = np.clip(
-            (
-                l["Whale"] * 0.5 +
-                l["Strength"] * 0.3 +
-                l["Pred"] * 2
-            ),
-            0,
-            95
-        )
-
-        down_prob = 100 - up_prob
-
-        risk = np.clip(down_prob, 5, 95)
-
-        if up_prob >= 55:
-            today_predict = "📈 상승 예상"
-            predict_color = "red"
-            predict_prob = up_prob
-        else:
-            today_predict = "📉 하락 예상"
-            predict_color = "blue"
-            predict_prob = down_prob
-
-        # =====================================================
-        # AI 분석 멘트
-        # =====================================================
-        if whale >= 75:
-            ai_text = "🚀 강한 세력 매집 (단기 급등 가능성)"
-        elif whale >= 55:
-            ai_text = "📊 세력 유입 진행 (방향성 확인)"
-        elif l["RSI"] < 30:
-            ai_text = "🎯 과매도 구간 (반등 가능성)"
-        else:
-            ai_text = "⚠️ 뚜렷한 방향 없음"
-
-        # =====================================================
-        # 현재가
-        # =====================================================
-        st.metric(
-            "현재가",
-            f"{price:,}원",
-            f"{pct:+.2f}%"
-        )
-
-        # =====================================================
-        # 핵심 정보 카드
-        # =====================================================
-        st.markdown(f"""
-        <div class='card'>
-
-        📈 오늘 최고가 :
-        <b style='color:red;'>{int(l['High']):,}원</b>
-
-        <br><br>
-
-        📉 오늘 최저가 :
-        <b style='color:blue;'>{int(l['Low']):,}원</b>
-
-        <br><br>
-
-        🟢 추천 매수가 :
-        <b>{buy_price:,}원</b>
-
-        <br><br>
-
-        🔴 추천 매도가 :
-        <b>{sell_price:,}원</b>
-
-        <br><br>
-
-        🐳 세력 점수 :
-        <b>{whale:.1f}%</b>
-
-        <br><br>
-
-        📊 거래량 :
-        <b>{today_volume:,}주</b>
-
-        <br>
-
-        <b style='color:{volume_color};'>
-        {volume_text} ({volume_pct:+.1f}%)
-        </b>
-
-        <br><br>
-
-        📊 상승/하락 판단 :
-        <b style='color:{predict_color}; font-size:18px;'>
-        {today_predict} ({predict_prob:.1f}%)
-        </b>
-
-        <br><br>
-
-        ⚠️ 리스크 :
-        <b>{risk:.1f}%</b>
-
-        </div>
-        """, unsafe_allow_html=True)
-
-        # =====================================================
-        # 매수 / 매도 판단
-        # =====================================================
-        if whale >= 65 and l["RSI"] < 65:
-            st.success("🟥 지금 매수해")
-
-        elif l["RSI"] > 75 or whale < 35:
-            st.error("🟦 지금 매도해")
-
-        else:
-            st.info("⚪ 관망 구간")
-
-        # =====================================================
-        # AI 분석
-        # =====================================================
-        st.markdown("### 🤖 AI 분석")
+        st.metric("현재가", f"{price:,}", f"{pct:+.2f}%")
 
         st.markdown(f"""
         <div class='card'>
 
-        {ai_text}
+        📈 최고가: {int(l['High']):,}<br>
+        📉 최저가: {int(l['Low']):,}<br><br>
 
-        <br><br>
+        🟢 매수: {buy:,}<br>
+        🔴 매도: {sell:,}<br><br>
 
-        🔥 변동성 :
-        <b>{l['Pred']:.1f}%</b>
+        🐳 세력: {whale:.1f}%<br><br>
 
-        <br><br>
+        📊 거래량: {vol_now:,}주<br>
+        변화: {vol_pct:+.1f}%<br><br>
 
-        📊 RSI :
-        <b>{l['RSI']:.1f}</b>
+        🎯 예측: {predict} ({up_prob:.1f}%)
 
         </div>
         """, unsafe_allow_html=True)
 
-        # =====================================================
-        # 뉴스
-        # =====================================================
+        if whale > 60:
+            st.success("🟥 매수 가능")
+        elif whale < 40:
+            st.error("🟦 매도")
+        else:
+            st.info("⚪ 관망")
+
         st.markdown("### 📰 뉴스")
 
-        news = get_news(name)
+        for n in get_news(name):
+            st.markdown(f"- [{n['title']}]({n['link']})")
 
-        for n in news:
-            st.markdown(f"• [{n['title']}]({n['link']})")
+# =========================================================
+# 🚀 급등
+# =========================================================
+elif st.session_state.page == "surge":
+
+    if st.button("⬅️ 뒤로"):
+        st.session_state.page = ""
+
+    st.markdown("## 🚀 급등")
+
+    st.info("간단 버전 (안정형)")
+
+# =========================================================
+# 🎯 반등
+# =========================================================
+elif st.session_state.page == "rebound":
+
+    if st.button("⬅️ 뒤로"):
+        st.session_state.page = ""
+
+    st.markdown("## 🎯 반등")
+
+    st.info("간단 버전 (안정형)")
