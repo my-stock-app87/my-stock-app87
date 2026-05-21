@@ -1,11 +1,19 @@
 import streamlit as st
 import pandas as pd
+import FinanceDataReader as fdr  # ◀ 패키지 추가
+import os
 
 # =====================================================
-# 1. 데이터 로딩 (무조건 최상단)
+# 1. 데이터 로딩 (안전한 경로 처리)
 # =====================================================
-# ⚠️ 파일명은 본인 환경에 맞게 수정
-df_stock = pd.read_csv("stock_list.csv")
+current_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in locals() else '.'
+file_path = os.path.join(current_dir, "stock_list.csv")
+
+try:
+    df_stock = pd.read_csv(file_path)
+except FileNotFoundError:
+    st.error(f"⚠️ '{file_path}' 파일을 찾을 수 없습니다. 깃허브 업로드 및 경로를 확인해주세요.")
+    st.stop()
 
 # =====================================================
 # 2. 종목 리스트 생성
@@ -20,27 +28,40 @@ def code(name):
     row = df_stock[df_stock["Name"] == name]
     if row.empty:
         return None
-    return row.iloc[0]["Code"]
+    return str(row.iloc[0]["Code"]).zfill(6) # ◀ 6자리 자릿수 맞춤 (예: 005930)
 
 
 # =====================================================
-# 4. 가격 데이터 가져오기 (이미 있다고 가정)
+# 4. 가격 데이터 가져오기 (FinanceDataReader 연동)
 # =====================================================
-def get_price(code):
+def get_price(code, period_days=500):
     """
-    ⚠️ 여기 함수는 너 기존 코드 그대로 사용해야 함
-    (API / yfinance / DB 등)
+    FinanceDataReader를 사용해 주가 데이터를 가져옵니다.
+    지표 계산(MA, RSI)을 위해 사용자가 조회할 기간보다 넉넉하게 데이터를 가져옵니다.
     """
-    raise NotImplementedError("get_price()를 구현하세요")
+    # 현재 날짜 기준 과거 데이터를 넉넉히 가져옴
+    end_date = pd.Timestamp.now().strftime('%Y-%m-%d')
+    start_date = (pd.Timestamp.now() - pd.Timedelta(days=period_days)).strftime('%Y-%m-%d')
+    
+    df = fdr.DataReader(code, start_date, end_date)
+    return df
 
 
 # =====================================================
-# 5. RSI 계산
+# 5. 기술지표 계산 (RSI 및 이동평균선 추가)
 # =====================================================
 @st.cache_data(ttl=10)
 def ind(df):
+    if df.empty or len(df) < 20: # 최소 이동평균을 위한 데이터 개수 확인
+        return df
+        
     df = df.copy()
 
+    # ◀ 이동평균선(MA) 계산 코드 추가 (10번, 11번 UI 에러 방지)
+    df["MA5"] = df["Close"].rolling(window=5).mean()
+    df["MA20"] = df["Close"].rolling(window=20).mean()
+
+    # RSI 계산
     delta = df["Close"].diff()
     gain = delta.where(delta > 0, 0)
     loss = -delta.where(delta < 0, 0)
@@ -75,22 +96,23 @@ if selected_code is None:
     st.error("종목 코드를 찾을 수 없습니다.")
     st.stop()
 
-# ⚠️ 가격 데이터 로딩
+# 가격 데이터 로딩 (조회 기간 슬라이더 값보다 조금 더 여유있게 가져옵니다)
 try:
-    raw_df = get_price(selected_code)
+    raw_df = get_price(selected_code, period_days=period + 100)
 except Exception as e:
     st.error(f"데이터 로딩 실패: {e}")
     st.stop()
 
 df_processed = ind(raw_df)
 
-if df_processed.empty or len(df_processed) < 2:
-    st.warning("데이터가 부족합니다 (최소 2개 이상 필요)")
+# MA20과 RSI 계산을 위해 최소 20개 이상의 데이터가 유효해야 함
+if df_processed.empty or len(df_processed) < 20:
+    st.warning("데이터가 부족합니다 (계산을 위해 최소 20개 이상의 거래일 필요)")
     st.stop()
 
 
 # =====================================================
-# 8. 최신 데이터
+# 8. 최신 데이터 추출
 # =====================================================
 latest = df_processed.iloc[-1]
 prev = df_processed.iloc[-2]
@@ -128,15 +150,17 @@ with col2:
 
 
 # =====================================================
-# 10. 이동평균
+# 10. 이동평균 (에러 방지를 위해 결측치 처리 추가)
 # =====================================================
 col3, col4 = st.columns(2)
 
 with col3:
-    st.metric("MA5", f"{int(latest['MA5']):,} 원")
+    ma5_val = f"{int(latest['MA5']):,} 원" if pd.notna(latest['MA5']) else "계산중"
+    st.metric("MA5", ma5_val)
 
 with col4:
-    st.metric("MA20", f"{int(latest['MA20']):,} 원")
+    ma20_val = f"{int(latest['MA20']):,} 원" if pd.notna(latest['MA20']) else "계산중"
+    st.metric("MA20", ma20_val)
 
 
 st.markdown("---")
