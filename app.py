@@ -1,6 +1,3 @@
-import streamlit as st
-import numpy as np
-
 st.markdown("## 🧠 종합분석")
 
 name = st.selectbox("종목 선택", names)
@@ -39,48 +36,58 @@ if not df.empty:
         status_color = "#999"
 
     # =====================================================
-    # 🔥 HTS 카드 UI (문자열 결합 및 홑따옴표 완벽 통일)
+    # 🔥 HTS 테이블 UI (감싸는 table 태그 추가로 출력 에러 완벽 해결)
     # =====================================================
-    # 복잡한 파이썬 포맷팅 에러를 방지하기 위해 데이터를 미리 텍스트로 완성
-    t_price = f"{price:,}원"
-    t_pct = f"({pct:+.2f}%)"
-    t_buy = f"{buy_price:,}원"
-    t_sell = f"{sell_price:,}원"
-    t_whale = f"{whale:.1f}%"
-    t_vol = f"{vol_pct:+.1f}%"
-    t_prob = f"{up_prob:.1f}%"
+    st.markdown(f"""
+    <table style="width:100%; border-collapse:collapse; background:white; border-radius:12px; overflow:hidden; border:1px solid #ddd;">
+        
+        <tr style="background:#f7f7f7;">
+            <td style="padding:10px; font-weight:800;">현재가</td>
+            <td style="padding:10px; text-align:right;">
+                {price:,}원 ({pct:+.2f}%)
+            </td>
+            <td style="text-align:right; font-weight:900; color:{status_color}; padding-right:10px;">
+                {status}
+            </td>
+        </tr>
 
-    # HTML 내부의 모든 따옴표를 홑따옴표(')로 고정하여 마크다운 충돌 차단
-    html_code = "<div style='width:100%; background:white; border-radius:18px; border:1px solid #e5e5e5; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,0.05); box-sizing:border-box;'>"
-    html_code += "<div style='display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #eee;'>"
-    html_code += "<div style='font-weight:800; color:#333;'>현재가</div>"
-    html_code += "<div style='font-weight:900; font-size:16px; color:#111;'>" + t_price + "</div>"
-    html_code += "<div style='font-weight:900; color:" + status_color + "; font-size:13px; text-align:right;'>" + status + "<br>" + t_pct + "</div>"
-    html_code += "</div>"
-    html_code += "<div style='display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;'>"
-    html_code += "<div style='font-weight:800; color:#333;'>매수추천</div>"
-    html_code += "<div style='color:#ff3b3b; font-weight:900;'>" + t_buy + "</div>"
-    html_code += "</div>"
-    html_code += "<div style='display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;'>"
-    html_code += "<div style='font-weight:800; color:#333;'>매도추천</div>"
-    html_code += "<div style='color:#3b6cff; font-weight:900;'>" + t_sell + "</div>"
-    html_code += "</div>"
-    html_code += "<div style='display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;'>"
-    html_code += "<div style='font-weight:800; color:#333;'>세력</div>"
-    html_code += "<div style='font-weight:800; color:#111;'>" + t_whale + "</div>"
-    html_code += "</div>"
-    html_code += "<div style='display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;'>"
-    html_code += "<div style='font-weight:800; color:#333;'>거래량 변화</div>"
-    html_code += "<div style='font-weight:800; color:#111;'>" + t_vol + "</div>"
-    html_code += "</div>"
-    html_code += "<div style='display:flex; justify-content:space-between; padding:10px 0;'>"
-    html_code += "<div style='font-weight:800; color:#333;'>예측확률</div>"
-    html_code += "<div style='font-weight:800; color:#111;'>" + t_prob + "</div>"
-    html_code += "</div>"
-    html_code += "</div>"
+        <tr>
+            <td style="padding:10px; font-weight:800;">매수추천</td>
+            <td colspan="2" style="padding:10px; text-align:right; color:#ff4d4d; font-weight:800;">
+                {buy_price:,}원
+            </td>
+        </tr>
 
-    # Streamlit 최신 컴포넌트를 사용하여 독립 렌더링
-    st.components.v1.html(html_code, height=290)
+        <tr style="background:#f7f7f7;">
+            <td style="padding:10px; font-weight:800;">매도추천</td>
+            <td colspan="2" style="padding:10px; text-align:right; color:#4d79ff; font-weight:800;">
+                {sell_price:,}원
+            </td>
+        </tr>
+
+        <tr>
+            <td style="padding:10px; font-weight:800;">세력</td>
+            <td colspan="2" style="padding:10px; text-align:right;">
+                {whale:.1f}%
+            </td>
+        </tr>
+
+        <tr style="background:#f7f7f7;">
+            <td style="padding:10px; font-weight:800;">거래량 변화</td>
+            <td colspan="2" style="padding:10px; text-align:right;">
+                {vol_pct:+.1f}%
+            </td>
+        </tr>
+
+        <tr>
+            <td style="padding:10px; font-weight:800;">예측확률</td>
+            <td colspan="2" style="padding:10px; text-align:right;">
+                {up_prob:.1f}%
+            </td>
+        </tr>
+
+    </table>
+    """, unsafe_allow_html=True)
 
     # =====================================================
     # 🤖 AI 전략 (개선: 더 읽기 쉽게 5줄 고정)
@@ -115,5 +122,16 @@ if not df.empty:
 돌파 여부 확인이 중요합니다.
 현재는 관망이 가장 안전합니다."""
 
-    ai_box = "<div style='background:white; padding:16px; border-radius:16px; border:1px solid #eee; line-height:1.7; font-size:14px; white-space:pre-line; color:#333;'>" + ai + "</div>"
-    st.components.v1.html(ai_box, height=160)
+    st.markdown(f"""
+    <div style="
+        background:white;
+        padding:16px;
+        border-radius:16px;
+        border:1px solid #eee;
+        line-height:1.7;
+        font-size:14px;
+        white-space:pre-line;
+    ">
+    {ai}
+    </div>
+    """, unsafe_allow_html=True)
