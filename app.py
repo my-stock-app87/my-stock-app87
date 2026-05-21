@@ -36,58 +36,37 @@ if not df.empty:
         status_color = "#999"
 
     # =====================================================
-    # 🔥 HTS 테이블 UI (감싸는 table 태그 추가로 출력 에러 완벽 해결)
+    # 🔥 HTS 테이블 UI (마크다운 충돌 방지를 위해 들여쓰기 공백 완전 제거)
     # =====================================================
-    st.markdown(f"""
-    <table style="width:100%; border-collapse:collapse; background:white; border-radius:12px; overflow:hidden; border:1px solid #ddd;">
-        
-        <tr style="background:#f7f7f7;">
-            <td style="padding:10px; font-weight:800;">현재가</td>
-            <td style="padding:10px; text-align:right;">
-                {price:,}원 ({pct:+.2f}%)
-            </td>
-            <td style="text-align:right; font-weight:900; color:{status_color}; padding-right:10px;">
-                {status}
-            </td>
-        </tr>
+    table_html = f"""<table style="width:100%; border-collapse:collapse; background:white; border-radius:12px; overflow:hidden; border:1px solid #ddd;">
+<tr style="background:#f7f7f7;">
+<td style="padding:10px; font-weight:800;">현재가</td>
+<td style="padding:10px; text-align:right;">{price:,}원 ({pct:+.2f}%)</td>
+<td style="text-align:right; font-weight:900; color:{status_color}; padding-right:10px;">{status}</td>
+</tr>
+<tr>
+<td style="padding:10px; font-weight:800;">매수추천</td>
+<td colspan="2" style="padding:10px; text-align:right; color:#ff4d4d; font-weight:800;">{buy_price:,}원</td>
+</tr>
+<tr style="background:#f7f7f7;">
+<td style="padding:10px; font-weight:800;">매도추천</td>
+<td colspan="2" style="padding:10px; text-align:right; color:#4d79ff; font-weight:800;">{sell_price:,}원</td>
+</tr>
+<tr>
+<td style="padding:10px; font-weight:800;">세력</td>
+<td colspan="2" style="padding:10px; text-align:right;">{whale:.1f}%</td>
+</tr>
+<tr style="background:#f7f7f7;">
+<td style="padding:10px; font-weight:800;">거래량 변화</td>
+<td colspan="2" style="padding:10px; text-align:right;">{vol_pct:+.1f}%</td>
+</tr>
+<tr>
+<td style="padding:10px; font-weight:800;">예측확률</td>
+<td colspan="2" style="padding:10px; text-align:right;">{up_prob:.1f}%</td>
+</tr>
+</table>"""
 
-        <tr>
-            <td style="padding:10px; font-weight:800;">매수추천</td>
-            <td colspan="2" style="padding:10px; text-align:right; color:#ff4d4d; font-weight:800;">
-                {buy_price:,}원
-            </td>
-        </tr>
-
-        <tr style="background:#f7f7f7;">
-            <td style="padding:10px; font-weight:800;">매도추천</td>
-            <td colspan="2" style="padding:10px; text-align:right; color:#4d79ff; font-weight:800;">
-                {sell_price:,}원
-            </td>
-        </tr>
-
-        <tr>
-            <td style="padding:10px; font-weight:800;">세력</td>
-            <td colspan="2" style="padding:10px; text-align:right;">
-                {whale:.1f}%
-            </td>
-        </tr>
-
-        <tr style="background:#f7f7f7;">
-            <td style="padding:10px; font-weight:800;">거래량 변화</td>
-            <td colspan="2" style="padding:10px; text-align:right;">
-                {vol_pct:+.1f}%
-            </td>
-        </tr>
-
-        <tr>
-            <td style="padding:10px; font-weight:800;">예측확률</td>
-            <td colspan="2" style="padding:10px; text-align:right;">
-                {up_prob:.1f}%
-            </td>
-        </tr>
-
-    </table>
-    """, unsafe_allow_html=True)
+    st.markdown(table_html, unsafe_allow_html=True)
 
     # =====================================================
     # 🤖 AI 전략 (개선: 더 읽기 쉽게 5줄 고정)
@@ -122,16 +101,6 @@ if not df.empty:
 돌파 여부 확인이 중요합니다.
 현재는 관망이 가장 안전합니다."""
 
-    st.markdown(f"""
-    <div style="
-        background:white;
-        padding:16px;
-        border-radius:16px;
-        border:1px solid #eee;
-        line-height:1.7;
-        font-size:14px;
-        white-space:pre-line;
-    ">
-    {ai}
-    </div>
-    """, unsafe_allow_html=True)
+    ai_html = f"""<div style="background:white; padding:16px; border-radius:16px; border:1px solid #eee; line-height:1.7; font-size:14px; white-space:pre-line;">{ai}</div>"""
+
+    st.markdown(ai_html, unsafe_allow_html=True)
