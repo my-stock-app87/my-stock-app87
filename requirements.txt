@@ -1,6 +1,5 @@
-streamlit
-pandas
-FinanceDataReader>=0.9.96
-lxml
-html5lib
+streamlit==1.45.1
+pandas==2.2.2
+FinanceDataReader
 requests
+lxml
