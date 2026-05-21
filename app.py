@@ -2,33 +2,25 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
+import FinanceDataReader as fdr
 from concurrent.futures import ThreadPoolExecutor
 
 # =========================================================
 # 설정
 # =========================================================
-st.set_page_config(page_title="전체시장 HTS", layout="wide")
-st.title("🔥 전체시장 실시간 대시보드")
+st.set_page_config(page_title="KRX 전체시장 FULL", layout="wide")
+st.title("🔥 KRX 전체시장 FULL 스캐너 + 검색")
 
 # =========================================================
-# 현실적인 전체시장 (KRX 대표군)
+# KRX 전체 종목
 # =========================================================
-STOCKS = {
-    "삼성전자": "005930.KS",
-    "SK하이닉스": "000660.KS",
-    "LG에너지솔루션": "373220.KS",
-    "삼성바이오로직스": "207940.KS",
-    "현대차": "005380.KS",
-    "기아": "000270.KS",
-    "NAVER": "035420.KS",
-    "카카오": "035720.KS",
-    "POSCO홀딩스": "005490.KS",
-    "에코프로": "086520.KQ",
-    "에코프로비엠": "247540.KQ",
-    "HLB": "028300.KQ",
-    "한화에어로": "012450.KS",
-    "두산에너빌리티": "034020.KS",
-}
+@st.cache_data(ttl=86400)
+def load_krx():
+    df = fdr.StockListing("KRX")[["Code", "Name"]].dropna()
+    df["Ticker"] = df["Code"].astype(str).str.zfill(6) + ".KS"
+    return df
+
+stocks = load_krx()
 
 # =========================================================
 # 데이터
@@ -36,8 +28,7 @@ STOCKS = {
 @st.cache_data(ttl=60)
 def get_data(ticker):
     try:
-        df = yf.Ticker(ticker).history(period="6mo")
-        return df.dropna()
+        return yf.Ticker(ticker).history(period="6mo").dropna()
     except:
         return pd.DataFrame()
 
@@ -71,9 +62,9 @@ def make(df):
 # =========================================================
 # 분석
 # =========================================================
-def analyze(name, ticker):
+def analyze(row):
 
-    df = get_data(ticker)
+    df = get_data(row["Ticker"])
     df = make(df)
 
     if df is None or df.empty:
@@ -85,39 +76,39 @@ def analyze(name, ticker):
     change = (l["Close"] - p["Close"]) / p["Close"] * 100
 
     return {
-        "종목": name,
+        "종목": row["Name"],
         "현재가": int(l["Close"]),
         "등락률": round(change, 2),
         "세력": round(l["Whale"], 1),
         "RSI": round(l["RSI"], 1),
-        "상태": (
-            "🚀 급등" if l["Whale"] > 75 and change > 3 else
-            "🎯 반등" if l["RSI"] < 35 else
-            "⚠️ 과열" if l["RSI"] > 80 else
-            "🐳 세력" if l["Whale"] > 70 else
-            "⚪ 관망"
-        )
     }
 
 # =========================================================
-# 전체 스캔
+# 🔥 FULL 스캔 (느리지만 전체)
 # =========================================================
+LIMIT = st.slider("스캔 종목 수 (전체=느림)", 100, 2000, 300)
+
+progress = st.progress(0)
 results = []
 
 with ThreadPoolExecutor(max_workers=10) as ex:
-    futures = [ex.submit(analyze, n, t) for n, t in STOCKS.items()]
 
-    for f in futures:
+    futures = []
+    for i, row in stocks.head(LIMIT).iterrows():
+        futures.append(ex.submit(analyze, row))
+
+    for i, f in enumerate(futures):
         r = f.result()
         if r:
             results.append(r)
+        progress.progress((i+1)/len(futures))
 
 df = pd.DataFrame(results)
 
 # =========================================================
-# 📊 시장 상태
+# 📊 시장 요약
 # =========================================================
-st.subheader("📊 시장 전체 현황")
+st.subheader("📊 시장 전체 요약")
 
 col1, col2, col3 = st.columns(3)
 
@@ -126,18 +117,33 @@ col2.metric("하락", len(df[df["등락률"] < 0]))
 col3.metric("세력", len(df[df["세력"] > 70]))
 
 # =========================================================
-# 전체 테이블
+# 🔍 검색 기능 (핵심)
 # =========================================================
-st.dataframe(df.sort_values("세력", ascending=False), use_container_width=True)
+st.subheader("🔍 종목 검색")
+
+q = st.text_input("종목명 검색 (예: 삼성, NAVER, 에코)")
+
+if q:
+    filtered = df[df["종목"].str.contains(q)]
+    st.dataframe(filtered, use_container_width=True)
 
 # =========================================================
-# 🔥 급등
+# 전체 테이블
+# =========================================================
+st.subheader("📊 전체 종목 데이터")
+
+st.dataframe(
+    df.sort_values("세력", ascending=False),
+    use_container_width=True
+)
+
+# =========================================================
+# 🚀 급등
 # =========================================================
 st.subheader("🚀 급등")
 
 st.dataframe(
-    df[df["상태"] == "🚀 급등"]
-    .sort_values("등락률", ascending=False)
+    df.sort_values("등락률", ascending=False).head(20)
 )
 
 # =========================================================
@@ -146,15 +152,5 @@ st.dataframe(
 st.subheader("🎯 반등")
 
 st.dataframe(
-    df[df["상태"] == "🎯 반등"]
-    .sort_values("RSI")
-)
-
-# =========================================================
-# ⚠️ 과열
-# =========================================================
-st.subheader("⚠️ 과열")
-
-st.dataframe(
-    df[df["RSI"] > 80].sort_values("RSI", ascending=False)
+    df[df["RSI"] < 35].sort_values("세력", ascending=False).head(20)
 )
