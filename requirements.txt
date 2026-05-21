@@ -1,6 +1,6 @@
 streamlit
 pandas
 numpy
-FinanceDataReader
+yfinance
+plotly
 feedparser
-streamlit-autorefresh
