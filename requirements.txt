@@ -1,7 +1,6 @@
 streamlit
 pandas
 numpy
-FinanceDataReader
-feedparser
-streamlit-autorefresh
 plotly
+feedparser
+git+https://github.com/FinanceData/FinanceDataReader.git
