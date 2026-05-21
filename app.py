@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,13 +6,13 @@ import feedparser
 from streamlit_autorefresh import st_autorefresh
 
 # =========================================================
-# 기본 설정
+# 설정
 # =========================================================
 st.set_page_config(page_title="주식주신 PRO", layout="centered")
-st_autorefresh(interval=5000, key="refresh")
+st_autorefresh(interval=15000, key="refresh")  # ⚡ 속도 최적화 (5초 → 15초)
 
 # =========================================================
-# UI 스타일
+# 스타일
 # =========================================================
 st.markdown("""
 <style>
@@ -48,9 +47,6 @@ div.stButton > button{
 </style>
 """, unsafe_allow_html=True)
 
-# =========================================================
-# 타이틀
-# =========================================================
 st.markdown("<div class='title'>🔥 주식주신 PRO</div>", unsafe_allow_html=True)
 
 # =========================================================
@@ -67,9 +63,10 @@ def code(name):
     r = df_stock[df_stock["Name"] == name]
     return r["Code"].iloc[0] if not r.empty else None
 
-@st.cache_data(ttl=10)
+# ⚡ 속도 핵심 (120 → 80 줄이기)
+@st.cache_data(ttl=20)
 def get_price(c):
-    return fdr.DataReader(str(c)).tail(120)
+    return fdr.DataReader(str(c)).tail(80)
 
 @st.cache_data(ttl=300)
 def get_news(name):
@@ -94,7 +91,7 @@ def ind(df):
 
     df["Whale"] = np.clip(vol * 45 + trend * 35 + power * 8, 0, 100)
 
-    df["Pred"] = np.clip(df["Whale"] * 0.2, 0, 25)
+    df["Pred"] = df["Whale"] * 0.2
 
     df["RSI"] = 50
 
@@ -109,7 +106,7 @@ if "page" not in st.session_state:
     st.session_state.page = ""
 
 # =========================================================
-# 메인 메뉴
+# 메인
 # =========================================================
 if st.session_state.page == "":
 
@@ -126,7 +123,7 @@ if st.session_state.page == "":
             st.session_state.page = "scalp"
 
 # =========================================================
-# 🧠 종합분석 (UI 개선 버전)
+# 🧠 종합분석 (HTS 스타일)
 # =========================================================
 elif st.session_state.page == "analysis":
 
@@ -147,83 +144,107 @@ elif st.session_state.page == "analysis":
         p = df.iloc[-2]
 
         price = int(l["Close"])
-        diff = price - int(p["Close"])
-        pct = diff / p["Close"] * 100
+        pct = (price - p["Close"]) / p["Close"] * 100
 
         buy_price = int(price * 0.98)
         sell_price = int(price * 1.04)
 
         whale = l["Whale"]
 
-        vol_now = int(l["Volume"])
-        vol_yest = int(p["Volume"])
-        vol_pct = (vol_now - vol_yest) / (vol_yest + 1e-10) * 100
+        vol_pct = (l["Volume"] - p["Volume"]) / (p["Volume"] + 1e-10) * 100
 
         up_prob = np.clip(whale * 0.7, 0, 95)
-        predict = "📈 상승 예상" if up_prob > 50 else "📉 하락 예상"
+        predict = "📈 상승" if up_prob > 50 else "📉 하락"
 
         # =====================================================
-        # 상단
+        # 상단 (현재가 + 매수/매도)
         # =====================================================
-        col1, col2 = st.columns([2, 1])
+        col1, col2, col3 = st.columns([2, 1, 1])
 
         with col1:
             st.metric("현재가", f"{price:,}원", f"{pct:+.2f}%")
 
         with col2:
-            if whale >= 65 and vol_pct > 0:
-                st.success("🟥 매수 추천")
-            elif whale < 35:
-                st.error("🟦 매도 추천")
-            else:
-                st.info("⚪ 관망")
+            st.metric("매수추천", f"{buy_price:,}원")
+
+        with col3:
+            st.metric("매도추천", f"{sell_price:,}원")
 
         # =====================================================
-        # 핵심 카드 (한 화면 정리)
+        # 핵심 지표
         # =====================================================
-        col1, col2, col3 = st.columns(3)
-        col1.metric("고가", f"{int(l['High']):,}원")
-        col2.metric("저가", f"{int(l['Low']):,}원")
-        col3.metric("세력이 있다", f"{whale:.1f}%")
-
-        col4, col5, col6 = st.columns(3)
-        col4.metric("매수", f"{buy_price:,}원")
-        col5.metric("매도", f"{sell_price:,}원")
-        col6.metric("예측", f"{up_prob:.1f}%")
-
         st.markdown("---")
 
-        col1, col2 = st.columns(2)
-        col1.metric("거래량", f"{vol_now:,}주", f"{vol_pct:+.1f}%")
-        col2.metric("AI", predict)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("세력이있다", f"{whale:.1f}%")
+        col2.metric("거래량", f"{int(l['Volume']):,}", f"{vol_pct:+.1f}%")
+        col3.metric("오늘의 예측", f"{up_prob:.1f}%")
+
+        col4, col5, col6 = st.columns(3)
+        col4.metric("최고가", f"{int(l['High']):,}원")
+        col5.metric("최저가", f"{int(l['Low']):,}원")
+        col6.metric("AI의 의견", predict)
 
         # =====================================================
-        # AI 전략
+        # 상태
         # =====================================================
-        if whale >= 70 and vol_pct > 10:
-            ai_plan = "🚀 세력 + 거래량 증가 → 단기 급등 가능"
-        elif whale >= 60:
-            ai_plan = "📊 세력 유입 → 추세 확인"
-        elif l["RSI"] < 30:
-            ai_plan = "🎯 과매도 → 반등 가능"
-        elif vol_pct < -10:
-            ai_plan = "⚠️ 거래량 감소 → 관망"
+        st.markdown("---")
+
+        if whale >= 65 and vol_pct > 0:
+            st.success("🟥 매수 구간")
+        elif whale < 35:
+            st.error("🟦 매도 구간")
         else:
-            ai_plan = "⚪ 방향 없음 → 관망"
+            st.info("⚪ 관망")
 
+        # =====================================================
+        # AI 전략 (3~5줄 리포트)
+        # =====================================================
         st.markdown("### 🤖 AI 전략")
 
+        if whale >= 70 and vol_pct > 10:
+            ai_plan = """
+1️⃣ 세력 매집 강한 구간  
+2️⃣ 거래량 동반 상승  
+3️⃣ 단기 급등 가능성  
+4️⃣ 눌림 매수 전략 유리
+"""
+        elif whale >= 60:
+            ai_plan = """
+1️⃣ 세력 유입 초기  
+2️⃣ 방향성 확인 필요  
+3️⃣ 추격 매수 위험  
+4️⃣ 지지 확인 후 진입
+"""
+        elif l["RSI"] < 30:
+            ai_plan = """
+1️⃣ 과매도 구간  
+2️⃣ 반등 가능성 존재  
+3️⃣ 분할 매수 전략  
+4️⃣ 손절 기준 필수
+"""
+        else:
+            ai_plan = """
+1️⃣ 횡보 구간  
+2️⃣ 방향성 없음  
+3️⃣ 관망 필요  
+4️⃣ 돌파 확인 후 대응
+"""
+
         st.markdown(f"""
-        <div class='card'>{ai_plan}</div>
+        <div class='card' style="white-space:pre-line; line-height:1.7;">
+        {ai_plan}
+        </div>
         """, unsafe_allow_html=True)
 
         # 뉴스
         st.markdown("### 📰 뉴스")
+
         for n in get_news(name):
             st.markdown(f"- {n['title']}")
 
 # =========================================================
-# ⚡ 단타 TOP5 (초고속 버전)
+# ⚡ 단타 TOP5 (초고속)
 # =========================================================
 elif st.session_state.page == "scalp":
 
@@ -232,17 +253,19 @@ elif st.session_state.page == "scalp":
 
     st.markdown("## ⚡ 단타 TOP5 (2만원 이하)")
 
-    base = df_stock.sample(80)
+    base = df_stock.sample(30)  # ⚡ 속도 핵심 (50 → 30)
 
     rows = []
 
-    for _, r in base.iterrows():
+    progress = st.progress(0)
+
+    for i, (_, r) in enumerate(base.iterrows()):
 
         try:
             c = r["Code"]
-            name = r["Name"]
 
             df = get_price(c)
+
             if df.empty:
                 continue
 
@@ -254,29 +277,40 @@ elif st.session_state.page == "scalp":
             if price > 20000:
                 continue
 
-            if l["Volume"] < 100000:
+            if l["Volume"] < 120000:
                 continue
 
             vol_pct = (l["Volume"] - p["Volume"]) / (p["Volume"] + 1e-10) * 100
 
+            if vol_pct < -20:
+                continue
+
             chg = (l["Close"] - p["Close"]) / p["Close"] * 100
 
-            score = l["Whale"] * 0.6 + vol_pct * 0.3 + max(chg, 0) * 4
+            whale = l["Whale"]
+
+            score = whale * 0.7 + vol_pct * 0.2 + max(chg, 0) * 3
 
             rows.append({
-                "종목": name,
+                "종목": r["Name"],
                 "현재가": f"{price:,}원",
                 "등락률": round(chg, 2),
                 "거래량": f"{int(l['Volume']):,}",
-                "세력": round(l["Whale"], 1),
+                "세력": round(whale, 1),
                 "점수": round(score, 1)
             })
 
         except:
             continue
 
-    result = pd.DataFrame(rows).sort_values("점수", ascending=False).head(5)
+        progress.progress((i + 1) / len(base))
 
-    st.dataframe(result, use_container_width=True)
+    progress.empty()
 
-    st.info("⚡ 2만원 이하 + 거래량 + 세력 + 상승률 기반 TOP5")
+    if len(rows) == 0:
+        st.warning("조건 만족 종목 없음")
+    else:
+        result = pd.DataFrame(rows).sort_values("점수", ascending=False).head(5)
+        st.dataframe(result, use_container_width=True)
+
+    st.info("⚡ 속도 최적화: 30종목 + 필터 + 캐시 + 진행바")
