@@ -1,6 +1,6 @@
 streamlit
 pandas
-numpy
-plotly
-feedparser
-git+https://github.com/FinanceData/FinanceDataReader.git
+FinanceDataReader>=0.9.96
+lxml
+html5lib
+requests
