@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,7 +13,7 @@ st.set_page_config(page_title="주식주신 PRO", layout="centered")
 st_autorefresh(interval=5000, key="refresh")
 
 # =========================================================
-# UI 스타일 (모바일)
+# UI 스타일
 # =========================================================
 st.markdown("""
 <style>
@@ -95,7 +96,7 @@ def ind(df):
 
     df["Pred"] = np.clip(df["Whale"] * 0.2, 0, 25)
 
-    df["RSI"] = 50  # 안정용
+    df["RSI"] = 50
 
     df["Money"] = df["Close"] * df["Volume"] / 1e8
 
@@ -125,7 +126,7 @@ if st.session_state.page == "":
             st.session_state.page = "scalp"
 
 # =========================================================
-# 🧠 종합분석
+# 🧠 종합분석 (UI 개선 버전)
 # =========================================================
 elif st.session_state.page == "analysis":
 
@@ -156,15 +157,13 @@ elif st.session_state.page == "analysis":
 
         vol_now = int(l["Volume"])
         vol_yest = int(p["Volume"])
-
         vol_pct = (vol_now - vol_yest) / (vol_yest + 1e-10) * 100
 
         up_prob = np.clip(whale * 0.7, 0, 95)
-
         predict = "📈 상승 예상" if up_prob > 50 else "📉 하락 예상"
 
         # =====================================================
-        # 현재가 + 상태
+        # 상단
         # =====================================================
         col1, col2 = st.columns([2, 1])
 
@@ -173,84 +172,77 @@ elif st.session_state.page == "analysis":
 
         with col2:
             if whale >= 65 and vol_pct > 0:
-                st.success("🟥 매수")
+                st.success("🟥 매수 추천")
             elif whale < 35:
-                st.error("🟦 매도")
+                st.error("🟦 매도 추천")
             else:
                 st.info("⚪ 관망")
 
         # =====================================================
-        # 카드
+        # 핵심 카드 (한 화면 정리)
         # =====================================================
-        st.markdown(f"""
-        <div class='card'>
+        col1, col2, col3 = st.columns(3)
+        col1.metric("고가", f"{int(l['High']):,}원")
+        col2.metric("저가", f"{int(l['Low']):,}원")
+        col3.metric("세력이 있다", f"{whale:.1f}%")
 
-        📈 최고가 : {int(l['High']):,}원<br><br>
+        col4, col5, col6 = st.columns(3)
+        col4.metric("매수", f"{buy_price:,}원")
+        col5.metric("매도", f"{sell_price:,}원")
+        col6.metric("예측", f"{up_prob:.1f}%")
 
-        📉 최저가 : {int(l['Low']):,}원<br><br>
+        st.markdown("---")
 
-        🟢 매수 추천 : <b style='color:red;'>{buy_price:,}원</b><br><br>
-
-        🔴 매도 추천 : <b style='color:blue;'>{sell_price:,}원</b><br><br>
-
-        🐳 세력 : {whale:.1f}%<br><br>
-
-        📊 거래량 : {vol_now:,}주<br>
-        변화 : {vol_pct:+.1f}%<br><br>
-
-        🎯 예측 : {predict} ({up_prob:.1f}%)
-
-        </div>
-        """, unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        col1.metric("거래량", f"{vol_now:,}주", f"{vol_pct:+.1f}%")
+        col2.metric("AI", predict)
 
         # =====================================================
         # AI 전략
         # =====================================================
         if whale >= 70 and vol_pct > 10:
-            ai_plan = "🚀 세력 + 거래량 증가 → 단기 급등 가능성"
+            ai_plan = "🚀 세력 + 거래량 증가 → 단기 급등 가능"
         elif whale >= 60:
-            ai_plan = "📊 세력 유입 진행 → 추세 확인 필요"
+            ai_plan = "📊 세력 유입 → 추세 확인"
         elif l["RSI"] < 30:
-            ai_plan = "🎯 과매도 → 반등 가능성"
+            ai_plan = "🎯 과매도 → 반등 가능"
         elif vol_pct < -10:
             ai_plan = "⚠️ 거래량 감소 → 관망"
         else:
             ai_plan = "⚪ 방향 없음 → 관망"
 
-        st.markdown("### 🤖 AI 대응 전략")
+        st.markdown("### 🤖 AI 전략")
 
         st.markdown(f"""
-        <div class='card'>
-
-        {ai_plan}
-
-        </div>
+        <div class='card'>{ai_plan}</div>
         """, unsafe_allow_html=True)
 
         # 뉴스
         st.markdown("### 📰 뉴스")
-
         for n in get_news(name):
-            st.markdown(f"- [{n['title']}]({n['link']})")
+            st.markdown(f"- {n['title']}")
 
 # =========================================================
-# ⚡ 단타 TOP5
+# ⚡ 단타 TOP5 (초고속 버전)
 # =========================================================
 elif st.session_state.page == "scalp":
 
     if st.button("⬅️ 뒤로"):
         st.session_state.page = ""
 
-    st.markdown("## ⚡ 오늘 단타 TOP5 (2만원 이하)")
+    st.markdown("## ⚡ 단타 TOP5 (2만원 이하)")
+
+    base = df_stock.sample(80)
 
     rows = []
 
-    for n in names:
+    for _, r in base.iterrows():
 
         try:
-            c = code(n)
-            df = ind(get_price(c))
+            c = r["Code"]
+            name = r["Name"]
 
+            df = get_price(c)
             if df.empty:
                 continue
 
@@ -262,20 +254,20 @@ elif st.session_state.page == "scalp":
             if price > 20000:
                 continue
 
-            if l["Volume"] < 200000:
+            if l["Volume"] < 100000:
                 continue
 
             vol_pct = (l["Volume"] - p["Volume"]) / (p["Volume"] + 1e-10) * 100
 
             chg = (l["Close"] - p["Close"]) / p["Close"] * 100
 
-            score = l["Whale"] * 0.5 + vol_pct * 0.3 + max(chg, 0) * 5
+            score = l["Whale"] * 0.6 + vol_pct * 0.3 + max(chg, 0) * 4
 
             rows.append({
-                "종목": n,
+                "종목": name,
                 "현재가": f"{price:,}원",
                 "등락률": round(chg, 2),
-                "거래량변화": f"{vol_pct:+.1f}%",
+                "거래량": f"{int(l['Volume']):,}",
                 "세력": round(l["Whale"], 1),
                 "점수": round(score, 1)
             })
@@ -287,4 +279,4 @@ elif st.session_state.page == "scalp":
 
     st.dataframe(result, use_container_width=True)
 
-    st.info("⚡ 조건: 2만원 이하 + 거래량 + 세력 + 상승률")
+    st.info("⚡ 2만원 이하 + 거래량 + 세력 + 상승률 기반 TOP5")
