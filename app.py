@@ -36,109 +36,43 @@ if not df.empty:
         status_color = "#999"
 
     # =====================================================
-    # 🔥 HTS 카드 UI (모바일 최적화 버전)
+    # 🔥 HTS 카드 UI (모바일 최적화 버전) - 문자열 공백 교정 완료
     # =====================================================
-    st.markdown(f"""
-    <div style="
-        width:100%;
-        background:white;
-        border-radius:18px;
-        border:1px solid #e5e5e5;
-        padding:14px;
-        box-shadow:0 2px 8px rgba(0,0,0,0.05);
-    ">
-
+    card_html = f"""<div style="width:100%; background:white; border-radius:18px; border:1px solid #e5e5e5; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,0.05); box-sizing:border-box;">
     <!-- 현재가 -->
-    <div style="
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        padding:10px 0;
-        border-bottom:1px solid #eee;
-    ">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #eee;">
         <div style="font-weight:800;">현재가</div>
-
-        <div style="font-weight:900; font-size:16px;">
-            {price:,}원
-        </div>
-
-        <div style="
-            font-weight:900;
-            color:{status_color};
-            font-size:13px;
-            text-align:right;
-        ">
-            {status}<br>
-            ({pct:+.2f}%)
-        </div>
+        <div style="font-weight:900; font-size:16px;">{price:,}원</div>
+        <div style="font-weight:900; color:{status_color}; font-size:13px; text-align:right;">{status}<br>({pct:+.2f}%)</div>
     </div>
-
     <!-- 매수 -->
-    <div style="
-        display:flex;
-        justify-content:space-between;
-        padding:10px 0;
-        border-bottom:1px solid #eee;
-    ">
+    <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;">
         <div style="font-weight:800;">매수추천</div>
-        <div style="color:#ff3b3b; font-weight:900;">
-            {buy_price:,}원
-        </div>
+        <div style="color:#ff3b3b; font-weight:900;">{buy_price:,}원</div>
     </div>
-
     <!-- 매도 -->
-    <div style="
-        display:flex;
-        justify-content:space-between;
-        padding:10px 0;
-        border-bottom:1px solid #eee;
-    ">
+    <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;">
         <div style="font-weight:800;">매도추천</div>
-        <div style="color:#3b6cff; font-weight:900;">
-            {sell_price:,}원
-        </div>
+        <div style="color:#3b6cff; font-weight:900;">{sell_price:,}원</div>
     </div>
-
     <!-- 세력 -->
-    <div style="
-        display:flex;
-        justify-content:space-between;
-        padding:10px 0;
-        border-bottom:1px solid #eee;
-    ">
+    <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;">
         <div style="font-weight:800;">세력</div>
-        <div style="font-weight:800;">
-            {whale:.1f}%
-        </div>
+        <div style="font-weight:800;">{whale:.1f}%</div>
     </div>
-
     <!-- 거래량 -->
-    <div style="
-        display:flex;
-        justify-content:space-between;
-        padding:10px 0;
-        border-bottom:1px solid #eee;
-    ">
+    <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;">
         <div style="font-weight:800;">거래량 변화</div>
-        <div style="font-weight:800;">
-            {vol_pct:+.1f}%
-        </div>
+        <div style="font-weight:800;">{vol_pct:+.1f}%</div>
     </div>
-
     <!-- 예측 -->
-    <div style="
-        display:flex;
-        justify-content:space-between;
-        padding:10px 0;
-    ">
+    <div style="display:flex; justify-content:space-between; padding:10px 0;">
         <div style="font-weight:800;">예측확률</div>
-        <div style="font-weight:800;">
-            {up_prob:.1f}%
-        </div>
+        <div style="font-weight:800;">{up_prob:.1f}%</div>
     </div>
+</div>"""
 
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(card_html, unsafe_allow_html=True)
 
     # =====================================================
     # 🤖 AI 전략 (개선: 더 읽기 쉽게 5줄 고정)
@@ -173,16 +107,6 @@ if not df.empty:
 돌파 여부 확인이 중요합니다.
 현재는 관망이 가장 안전합니다."""
 
-    st.markdown(f"""
-    <div style="
-        background:white;
-        padding:16px;
-        border-radius:16px;
-        border:1px solid #eee;
-        line-height:1.7;
-        font-size:14px;
-        white-space:pre-line;
-    ">
-    {ai}
-    </div>
-    """, unsafe_allow_html=True)
+    ai_html = f"""<div style="background:white; padding:16px; border-radius:16px; border:1px solid #eee; line-height:1.7; font-size:14px; white-space:pre-line;">{ai}</div>"""
+
+    st.markdown(ai_html, unsafe_allow_html=True)
