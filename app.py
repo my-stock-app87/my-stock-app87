@@ -44,10 +44,20 @@ STOCK_MAP = {
     "삼성바이오로직스": "207940"
 }
 
-stock_names = list(STOCK_MAP.keys())
+def resolve_stock_code(user_input):
+    user_input = user_input.strip()
 
-def resolve_stock_code(name):
-    return STOCK_MAP.get(name)
+    if user_input.isdigit() and len(user_input) == 6:
+        return user_input
+
+    if user_input in STOCK_MAP:
+        return STOCK_MAP[user_input]
+
+    for name, code in STOCK_MAP.items():
+        if user_input in name:
+            return code
+
+    return None
 
 # ==========================================
 # 2. 데이터
@@ -111,7 +121,6 @@ def analyze(df):
     price_pos = (current - low) / max(high - low, 1) * 100
     up_score = min(max(int(price_pos * 0.7 + change_pct * 5), 5), 98)
 
-    # 세력 유입
     volume_ratio = volume / avg_vol
     force_score = (
         min(volume_ratio * 40, 60) +
@@ -152,32 +161,30 @@ def analyze(df):
     }
 
 # ==========================================
-# 5. UI (핵심 수정: 전체검색 + 필터 안정 구조)
+# 5. UI
 # ==========================================
-st.title("📊 주식 분석실")
+st.title("📊 주식 분석실 PRO")
 
-search = st.text_input("종목 검색 (한글 입력 가능)")
+# 🔥 입력만 존재
+user_input = st.text_input("종목명 / 코드 입력 (예: 삼성전자, 005930, 카카오)")
 
-# 🔥 핵심: 전체검색 + 필터 같이 유지
-if search:
-    filtered = [name for name in stock_names if search in name]
-else:
-    filtered = stock_names
-
-# 검색 결과 없으면 전체 복구
-if len(filtered) == 0:
-    filtered = stock_names
-
-selected_name = st.selectbox("종목 선택", filtered)
-
-btn = st.button("🚀 분석 시작")
+# 🔥 버튼 실행
+btn = st.button("🚀 분석하기")
 
 # ==========================================
-# 6. 실행
+# 6. 실행 (버튼 눌렀을 때만)
 # ==========================================
 if btn:
 
-    code = resolve_stock_code(selected_name)
+    if not user_input:
+        st.error("종목을 입력하세요")
+        st.stop()
+
+    code = resolve_stock_code(user_input)
+
+    if code is None:
+        st.error("종목을 찾을 수 없습니다.")
+        st.stop()
 
     df = get_stock_data(code)
 
@@ -199,7 +206,6 @@ if btn:
         unsafe_allow_html=True
     )
 
-    # 핵심 지표
     st.subheader("📊 핵심 분석 지표")
 
     st.dataframe(pd.DataFrame({
@@ -219,14 +225,12 @@ if btn:
         ]
     }), hide_index=True)
 
-    # 시장 체크
     st.subheader("🎯 시장 체크 포인트")
     st.write(f"• 매수가: {result['buy']:,}원")
     st.write(f"• 매도가: {result['sell']:,}원")
     st.write(f"• 지지선: {result['low']:,}원")
     st.write(f"• 저항선: {result['high']:,}원")
 
-    # 세력
     st.subheader("🧠 세력 유입 가능성")
 
     if result["force_score"] >= 70:
@@ -236,17 +240,14 @@ if btn:
     else:
         st.markdown(f"😐 약한 유입 ({result['force_score']}%)")
 
-    # 차트
     st.subheader("📈 최근 5일")
     recent = df.tail(5)
     recent.index = pd.to_datetime(recent.index).strftime("%m/%d")
     st.line_chart(recent["Close"])
 
-    # AI
     st.subheader("💡 AI 분석")
     st.info(result["ai"])
 
-    # 뉴스
     st.subheader("📰 뉴스")
 
     news = get_realtime_news(code)
