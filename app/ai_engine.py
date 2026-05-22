@@ -1,58 +1,74 @@
 import pandas as pd
+from app.collectors.kr_collector import collect_korean_market_data
 
-def calculate_ai_score(df):
-    """
-    features + signals를 종합해서
-    작전주 확률 점수를 계산하는 엔진
-    """
 
-    # --------------------------
-    # 1. 기본 점수 (거래량)
-    # --------------------------
-    df["score"] = df["volume_ratio"] * 20
+# -------------------------
+# 점수 계산
+# -------------------------
+def calculate_scores(df):
 
-    # --------------------------
-    # 2. 패턴 점수 (signals)
-    # --------------------------
-    df["score"] += df["accumulation"] * 25
-    df["score"] += df["breakout"] * 35
-    df["score"] += df["shakeout"] * 20
-    df["score"] += df["distribution"] * -30  # 위험 패턴은 감점
+    vol_score = min(100, df["Volume"].pct_change().fillna(0).abs().mean() * 1000)
+    up_score = max(0, df["Close"].pct_change().mean() * 1000 + 50)
+    force_score = (vol_score + up_score) / 2
 
-    # --------------------------
-    # 3. 수급 점수
-    # --------------------------
-    df["score"] += df["flow_bias"] * 15
+    volatility_score = df["Close"].pct_change().std() * 1000
+    final_score = (vol_score * 0.4 + up_score * 0.3 + force_score * 0.3)
 
-    # --------------------------
-    # 4. 공매도 (숏스퀴즈)
-    # --------------------------
-    df["score"] += df["short_pressure"] * 15
+    return {
+        "vol_score": round(vol_score, 2),
+        "up_score": round(up_score, 2),
+        "force_score": round(force_score, 2),
+        "volatility_score": round(volatility_score, 2),
+        "final_score": round(final_score, 2)
+    }
 
-    # --------------------------
-    # 5. 점수 정규화
-    # --------------------------
-    df["score"] = df["score"].clip(0, 100)
 
-    # --------------------------
-    # 6. 최종 라벨링
-    # --------------------------
-    def label(row):
-        if row["score"] >= 75:
-            return "🔥 작전/급등 의심"
-        elif row["score"] >= 50:
-            return "⚠️ 관찰 필요"
-        else:
-            return "❄️ 일반"
+# -------------------------
+# 해석 레이어
+# -------------------------
+def explain(scores):
 
-    df["label"] = df.apply(label, axis=1)
+    reasons = []
 
-    # --------------------------
-    # 7. 위험도 계산
-    # --------------------------
-    df["risk"] = (
-        df["distribution"] * 40 +
-        df["shakeout"] * 30
-    )
+    if scores["vol_score"] > 60:
+        reasons.append("거래량 급증 → 세력 유입 가능성")
 
-    return df
+    if scores["force_score"] > 50:
+        reasons.append("수급 강세 패턴")
+
+    if scores["volatility_score"] < 30:
+        reasons.append("매집 구간 가능성")
+
+    if scores["final_score"] > 70:
+        position = "🚀 급등 가능성"
+    elif scores["final_score"] > 40:
+        position = "⚠️ 관찰 구간"
+    else:
+        position = "🔻 약세"
+
+    return position, reasons
+
+
+# -------------------------
+# 메인 분석 함수
+# -------------------------
+def run_analysis(code):
+
+    df = collect_korean_market_data(code)
+
+    if df.empty:
+        return {"error": "데이터 없음"}
+
+    scores = calculate_scores(df)
+    position, reasons = explain(scores)
+
+    last_price = df["Close"].iloc[-1]
+
+    return {
+        "종목": code,
+        "현재가": int(last_price),
+        **scores,
+        "position": position,
+        "reasons": reasons,
+        "ai": position
+    }
