@@ -1,6 +1,6 @@
 import pandas as pd
-from collectors.global_collector import collect_global_market_data
-
+collect_market_data(region="KR")
+collect_market_data(region="GLOBAL")
 # =========================
 # 1. 점수 계산 엔진
 # =========================
