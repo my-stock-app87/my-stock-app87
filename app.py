@@ -20,7 +20,6 @@ st.markdown("""
     background: linear-gradient(to bottom, #0F172A, #111827);
     color: white;
 }
-
 .stButton>button {
     background-color: #FF4B4B;
     color: white;
@@ -48,11 +47,10 @@ STOCK_MAP = {
 stock_names = list(STOCK_MAP.keys())
 
 def resolve_stock_code(name):
-    name = name.strip().replace(" ", "")
     return STOCK_MAP.get(name)
 
 # ==========================================
-# 2. 데이터 로딩
+# 2. 데이터
 # ==========================================
 @st.cache_data(ttl=60)
 def get_stock_data(code):
@@ -82,7 +80,6 @@ def get_realtime_news(code):
             })
 
         return news
-
     except:
         return []
 
@@ -106,13 +103,11 @@ def analyze(df):
 
     avg_vol = df["Volume"].tail(5).mean()
 
-    # 거래량 변화
     prev_volume = int(df.iloc[-2]["Volume"])
-    vol_trend = "📈 증가" if volume > prev_volume else "📉 감소" if volume < prev_volume else "➖ 동일"
+    vol_trend = "📈 증가" if volume > prev_volume else "📉 감소"
 
     vol_score = min(max(int(volume / avg_vol * 50), 10), 95)
 
-    # 상승 점수
     price_pos = (current - low) / max(high - low, 1) * 100
     up_score = min(max(int(price_pos * 0.7 + change_pct * 5), 5), 98)
 
@@ -124,7 +119,6 @@ def analyze(df):
     )
     force_score = round(min(max(force_score, 0), 100), 1)
 
-    # 포지션 판단
     if up_score >= 70:
         position = "🔥 상승 우세"
         color = "#FF4B4B"
@@ -158,32 +152,30 @@ def analyze(df):
     }
 
 # ==========================================
-# 5. UI
+# 5. UI (핵심 수정: 전체검색 + 필터 안정 구조)
 # ==========================================
 st.title("📊 주식 분석실")
 
-# 🔥 검색 기반 (selectbox 제거)
-search = st.text_input("종목 검색 (한글 입력)")
+search = st.text_input("종목 검색 (한글 입력 가능)")
 
-filtered = [n for n in stock_names if search in n] if search else []
+# 🔥 핵심: 전체검색 + 필터 같이 유지
+if search:
+    filtered = [name for name in stock_names if search in name]
+else:
+    filtered = stock_names
 
-selected_name = None
+# 검색 결과 없으면 전체 복구
+if len(filtered) == 0:
+    filtered = stock_names
 
-if len(filtered) == 1:
-    selected_name = filtered[0]
-elif len(filtered) > 1:
-    st.write("🔎 검색 결과")
-    for n in filtered:
-        st.write(f"• {n}")
-elif search in stock_names:
-    selected_name = search
+selected_name = st.selectbox("종목 선택", filtered)
 
 btn = st.button("🚀 분석 시작")
 
 # ==========================================
 # 6. 실행
 # ==========================================
-if btn and selected_name:
+if btn:
 
     code = resolve_stock_code(selected_name)
 
@@ -195,7 +187,6 @@ if btn and selected_name:
 
     result = analyze(df)
 
-    # 현재가
     st.metric(
         "현재가",
         f"{result['current']:,}원",
@@ -208,9 +199,7 @@ if btn and selected_name:
         unsafe_allow_html=True
     )
 
-    # ==========================================
     # 핵심 지표
-    # ==========================================
     st.subheader("📊 핵심 분석 지표")
 
     st.dataframe(pd.DataFrame({
@@ -230,19 +219,14 @@ if btn and selected_name:
         ]
     }), hide_index=True)
 
-    # ==========================================
-    # 시장 체크 포인트
-    # ==========================================
+    # 시장 체크
     st.subheader("🎯 시장 체크 포인트")
-
     st.write(f"• 매수가: {result['buy']:,}원")
     st.write(f"• 매도가: {result['sell']:,}원")
     st.write(f"• 지지선: {result['low']:,}원")
     st.write(f"• 저항선: {result['high']:,}원")
 
-    # ==========================================
-    # 세력 유입
-    # ==========================================
+    # 세력
     st.subheader("🧠 세력 유입 가능성")
 
     if result["force_score"] >= 70:
@@ -252,23 +236,17 @@ if btn and selected_name:
     else:
         st.markdown(f"😐 약한 유입 ({result['force_score']}%)")
 
-    # ==========================================
     # 차트
-    # ==========================================
     st.subheader("📈 최근 5일")
     recent = df.tail(5)
     recent.index = pd.to_datetime(recent.index).strftime("%m/%d")
     st.line_chart(recent["Close"])
 
-    # ==========================================
-    # AI 코멘트
-    # ==========================================
+    # AI
     st.subheader("💡 AI 분석")
     st.info(result["ai"])
 
-    # ==========================================
     # 뉴스
-    # ==========================================
     st.subheader("📰 뉴스")
 
     news = get_realtime_news(code)
