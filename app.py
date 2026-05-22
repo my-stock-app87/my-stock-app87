@@ -2,46 +2,22 @@ import streamlit as st
 import pandas as pd
 from ai_engine import run_analysis
 
-st.title("📊 주식 분석실 PRO")
+st.title("📊 주식분석실 PRO")
 
-user_input = st.text_input("종목명 / 코드 입력")
+# 1️⃣ 종목 입력
+code = st.text_input("종목 코드 입력 (예: 005930)")
 
-btn = st.button("🚀 분석하기")
+# 2️⃣ 버튼
+if st.button("분석하기"):
+    if code == "":
+        st.warning("종목 코드를 입력하세요")
+    else:
+        result = run_analysis(code)
 
-if btn:
+        st.subheader("📌 분석 결과")
 
-    if not user_input:
-        st.error("종목을 입력하세요")
-        st.stop()
-
-    # 🔥 AI 브레인 호출
-    output = run_analysis(user_input)
-
-    if "error" in output:
-        st.error("데이터 없음")
-        st.stop()
-
-    result = output["result"]
-    df = output["df"]
-
-    st.metric(
-        "현재가",
-        f"{result['current']:,}원",
-        f"{result['change']:,} ({result['change_pct']}%)"
-    )
-
-    st.markdown(
-        f"<div style='color:{result['color']}; font-size:20px;'>"
-        f"{result['position']}</div>",
-        unsafe_allow_html=True
-    )
-
-    st.subheader("📊 핵심 분석")
-
-    st.write(result)
-
-    st.subheader("📈 최근 5일")
-    st.line_chart(df["Close"].tail(5))
-
-    st.subheader("💡 AI 판단")
-    st.info(result["ai"])
+        # dict or dataframe 둘 다 대응
+        if isinstance(result, pd.DataFrame):
+            st.dataframe(result)
+        else:
+            st.write(result)
