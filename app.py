@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # =========================
-# 한국 대표 종목 매핑
+# 대표 종목
 # =========================
 @st.cache_data(ttl=86400)
 def load_krx_tickers():
@@ -25,16 +25,14 @@ def load_krx_tickers():
         "카카오": "035720",
         "LG에너지솔루션": "373220",
         "셀트리온": "068270",
-        "기아": "000270",
-        "POSCO홀딩스": "005490",
-        "삼성바이오로직스": "207940"
+        "기아": "000270"
     }
 
 
 # =========================
 # 종목 검색
 # =========================
-def search_korean_code(query, ticker_dict):
+def search_stock(query, ticker_dict):
 
     query = str(query).strip()
 
@@ -75,7 +73,7 @@ def search_korean_code(query, ticker_dict):
 
 
 # =========================
-# 글로벌 지수
+# 글로벌 시장
 # =========================
 @st.cache_data(ttl=3600)
 def load_global_markets():
@@ -85,15 +83,15 @@ def load_global_markets():
         "🇺🇸 S&P500": "^GSPC",
         "🇰🇷 KOSPI": "^KS11",
         "🇰🇷 KOSDAQ": "^KQ11",
-        "🇯🇵 Nikkei": "^N225",
-        "🇩🇪 DAX": "^GDAXI"
+        "🇯🇵 Nikkei": "^N225"
     }
 
-    result = []
+    results = []
 
     for name, ticker in indices.items():
 
         try:
+
             df = yf.download(
                 ticker,
                 period="5d",
@@ -112,18 +110,21 @@ def load_global_markets():
                 current = float(close[-1])
                 prev = float(close[-2])
 
-                rate = ((current - prev) / prev) * 100
+                change = (
+                    (current - prev)
+                    / prev
+                ) * 100
 
-                result.append({
+                results.append({
                     "시장": name,
                     "현재가": current,
-                    "등락률": rate
+                    "등락률": change
                 })
 
         except:
             continue
 
-    return result
+    return results
 
 
 # =========================
@@ -178,10 +179,7 @@ def load_stock_data(code):
 
         return None, None
 
-    except Exception as e:
-
-        st.error(f"데이터 로딩 오류: {e}")
-
+    except:
         return None, None
 
 
@@ -205,67 +203,48 @@ def build_features(df):
         if len(returns) < 20:
             return None
 
+        # 상승 에너지
         momentum = float(
             (returns > 0.02).sum()
             -
             (returns < -0.02).sum()
         )
 
+        # 변동성
         volatility = float(
             returns.std()
         )
 
-        vol_mean = float(
-            volume.rolling(20).mean().iloc[-1]
-        )
+        # 거래량 변화율
+        prev_volume = float(volume.iloc[-2])
+        current_volume = float(volume.iloc[-1])
 
-        vol_std = float(
-            volume.rolling(20).std().iloc[-1]
-        )
+        volume_change_pct = 0.0
 
-        volume_z = 0.0
+        if prev_volume > 0:
 
-        if vol_std > 0:
-            volume_z = (
-                volume.iloc[-1] - vol_mean
-            ) / (vol_std + 1e-9)
+            volume_change_pct = (
+                (current_volume - prev_volume)
+                / prev_volume
+            ) * 100
 
-        support = float(
-            close.rolling(20).min().iloc[-1]
-        )
-
-        resistance = float(
-            close.rolling(20).max().iloc[-1]
-        )
-
-        price = float(close.iloc[-1])
-
-        support_dist = (
-            (price - support) / price
-        )
-
-        resistance_dist = (
-            (resistance - price) / price
-        )
-
+        # 추세
         trend = float(
             returns.mean()
         )
+
+        # 현재가
+        price = float(close.iloc[-1])
 
         return {
             "price": price,
             "momentum": momentum,
             "volatility": volatility,
-            "volume_z": volume_z,
-            "support_dist": support_dist,
-            "resistance_dist": resistance_dist,
-            "trend": trend
+            "trend": trend,
+            "volume_change_pct": volume_change_pct
         }
 
-    except Exception as e:
-
-        st.error(f"특징 계산 오류: {e}")
-
+    except:
         return None
 
 
@@ -282,17 +261,6 @@ def score(features):
         1 - features["volatility"] * 10
     )
 
-    volume_score = min(
-        100.0,
-        abs(features["volume_z"]) * 20
-    )
-
-    structure_score = (
-        max(0.0, 1 - features["support_dist"]) * 50
-        +
-        max(0.0, 1 - features["resistance_dist"]) * 50
-    )
-
     momentum_score = (
         features["momentum"] * 10
     )
@@ -301,24 +269,22 @@ def score(features):
         features["trend"] * 1000
     )
 
+    volume_score = min(
+        100,
+        abs(features["volume_change_pct"])
+    )
+
     final_score = (
-        compression * 30
+        compression * 40
         +
-        volume_score * 0.25
+        momentum_score * 0.2
         +
-        structure_score * 0.2
+        trend_score * 0.2
         +
-        momentum_score * 0.15
-        +
-        trend_score * 0.1
+        volume_score * 0.2
     )
 
     return {
-        "compression": round(compression, 3),
-        "volume_score": round(volume_score, 2),
-        "structure_score": round(structure_score, 2),
-        "momentum_score": round(momentum_score, 2),
-        "trend_score": round(trend_score, 2),
         "final_score": round(final_score, 2)
     }
 
@@ -360,7 +326,6 @@ def run_analysis(code, name, df):
     return {
         "종목명": name,
         "티커": code,
-        "현재가": features["price"],
         **features,
         **scores,
         "상태": label,
@@ -373,7 +338,7 @@ def run_analysis(code, name, df):
 # =========================
 st.title("📊 AI 주식 분석 엔진")
 
-# 글로벌 지수
+# 글로벌 시장
 st.subheader("🌐 글로벌 시장")
 
 markets = load_global_markets()
@@ -402,7 +367,7 @@ st.subheader("🇰🇷 한국 / 미국 주식 분석")
 ticker_dict = load_krx_tickers()
 
 query = st.text_input(
-    "종목명 또는 종목코드 입력 (예: 삼성전자 / 005930 / AAPL)"
+    "종목명 또는 종목코드 입력"
 )
 
 # 버튼
@@ -414,9 +379,9 @@ if st.button("분석하기"):
 
     else:
 
-        with st.spinner("데이터 분석 중..."):
+        with st.spinner("AI 분석 중..."):
 
-            code, name = search_korean_code(
+            code, name = search_stock(
                 query,
                 ticker_dict
             )
@@ -432,7 +397,7 @@ if st.button("분석하기"):
                 if df is None:
 
                     st.error(
-                        f"{query} 데이터를 불러올 수 없습니다."
+                        "데이터를 불러올 수 없습니다."
                     )
 
                 else:
@@ -449,39 +414,87 @@ if st.button("분석하기"):
 
                     else:
 
-                        left, right = st.columns(2)
+                        left, center, right = st.columns([1,2,1])
 
+                        # =========================
+                        # 왼쪽 지표
+                        # =========================
                         with left:
 
-                            st.subheader("📈 상세 분석")
+                            st.subheader("📈 핵심 지표")
 
-                            display = {
-                                "종목명": result["종목명"],
-                                "티커": result["티커"],
-                                "현재가": round(result["현재가"], 2),
-                                "최종점수": result["final_score"],
-                                "변동성": result["volatility"],
-                                "거래량Z": result["volume_z"],
-                                "모멘텀": result["momentum"]
-                            }
+                            # 상승 흐름 해석
+                            if result["momentum"] > 0:
+                                momentum_text = "🔥 상승 흐름 강함"
 
-                            st.dataframe(
-                                pd.DataFrame(
-                                    display.items(),
-                                    columns=["항목", "값"]
+                            elif result["momentum"] < 0:
+                                momentum_text = "❄️ 하락 압력 강함"
+
+                            else:
+                                momentum_text = "⚖️ 중립 흐름"
+
+                            # 거래량 해석
+                            if result["volume_change_pct"] > 0:
+
+                                volume_text = (
+                                    f"📈 +{result['volume_change_pct']:.1f}%"
                                 )
+
+                            else:
+
+                                volume_text = (
+                                    f"📉 {result['volume_change_pct']:.1f}%"
+                                )
+
+                            st.metric(
+                                "현재가",
+                                f"{int(result['price']):,}원"
                             )
 
-                            st.line_chart(df["Close"])
+                            st.metric(
+                                "AI 종합 점수",
+                                f"{result['final_score']}점"
+                            )
 
+                            st.metric(
+                                "시장 흐름",
+                                momentum_text
+                            )
+
+                            st.metric(
+                                "변동성",
+                                f"{result['volatility'] * 100:.2f}%"
+                            )
+
+                            st.metric(
+                                "전일 대비 거래량",
+                                volume_text
+                            )
+
+                            st.metric(
+                                "추세 방향",
+                                f"{result['trend'] * 100:.2f}%"
+                            )
+
+                        # =========================
+                        # 가운데 차트
+                        # =========================
+                        with center:
+
+                            st.subheader(
+                                f"📊 {result['종목명']} 주가 차트"
+                            )
+
+                            st.line_chart(
+                                df["Close"]
+                            )
+
+                        # =========================
+                        # 오른쪽 AI 진단
+                        # =========================
                         with right:
 
                             st.subheader("🤖 AI 진단")
-
-                            if ".K" in result["티커"]:
-                                price_text = f"{int(result['현재가']):,}원"
-                            else:
-                                price_text = f"${result['현재가']:.2f}"
 
                             st.markdown(
                                 f"""
@@ -496,14 +509,16 @@ text-align:center;
 
 <h4>{result['티커']}</h4>
 
-<h1>{price_text}</h1>
+<h1>{int(result['price']):,}원</h1>
 
 <h2 style="color:{result['color']}">
 {result['상태']}
 </h2>
 
 <h1>
-AI SCORE: {result['final_score']}
+AI SCORE
+<br>
+{result['final_score']}
 </h1>
 
 </div>
