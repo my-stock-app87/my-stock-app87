@@ -1,4 +1,4 @@
 streamlit
 pandas
 pykrx
-setuptools
+setuptools<70.0.0
