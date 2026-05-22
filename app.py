@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import FinanceDataReader as fdr
 import datetime
+import requests
+from bs4 import BeautifulSoup
 
 # ==========================================
 # 0. 앱 설정
@@ -79,7 +81,32 @@ def get_stock_data(code):
     return df if not df.empty else None
 
 # ==========================================
-# 6. 분석 로직
+# 6. 실시간 뉴스 크롤링 함수 (추가)
+# ==========================================
+@st.cache_data(ttl=300)
+def get_realtime_news(code):
+    try:
+        url = f"https://naver.com{code}"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        res = requests.get(url, headers=headers)
+        soup = BeautifulSoup(res.text, "html.parser")
+        
+        news_list = []
+        titles = soup.select(".title a")
+        
+        for title in titles[:3]:  # 상위 3개 뉴스만 추출
+            text = title.get_text(strip=True)
+            href = title["href"]
+            # 네이버 금융 뉴스 링크 주소 완성
+            link = f"https://naver.com{href}"
+            news_list.append({"title": text, "link": link})
+            
+        return news_list
+    except:
+        return []
+
+# ==========================================
+# 7. 분석 로직
 # ==========================================
 def analyze(df):
 
@@ -121,6 +148,9 @@ def analyze(df):
     else:
         ai = "횡보 구간. 거래량 변화 확인 필요."
 
+    # [수정] 예상 상승가 계산 로직 추가 (상승 점수와 최근 변동성을 기반으로 산출)
+    estimated_target = int(current * (1 + (up_score / 100) * 0.05))
+
     return {
         "current": current,
         "change": change,
@@ -134,11 +164,12 @@ def analyze(df):
         "color": color,
         "ai": ai,
         "buy": int(low * 1.003),
-        "sell": int(high * 0.997)
+        "sell": int(high * 0.997),
+        "estimated_target": estimated_target  # 반환 값에 추가
     }
 
 # ==========================================
-# 7. INTRO
+# 8. INTRO
 # ==========================================
 if st.session_state.page == "intro":
 
@@ -149,7 +180,7 @@ if st.session_state.page == "intro":
         st.rerun()
 
 # ==========================================
-# 8. ANALYSIS
+# 9. ANALYSIS
 # ==========================================
 else:
 
@@ -199,18 +230,19 @@ else:
         st.write("")
 
         # ==============================
-        # 핵심 지표
+        # 핵심 지표 (예상 상승가 항목 추가)
         # ==============================
         st.subheader("📊 핵심 분석 지표")
 
         st.dataframe(pd.DataFrame({
-            "항목": ["고가", "저가", "거래량", "거래 집중도", "상승 점수"],
+            "항목": ["고가", "저가", "거래량", "거래 집중도", "상승 점수", "예상 상승가"],
             "값": [
                 f"{result['high']:,}",
                 f"{result['low']:,}",
                 f"{result['volume']:,}",
                 f"{result['vol_score']}%",
-                f"{result['up_score']}%"
+                f"{result['up_score']}%",
+                f"{result['estimated_target']:,}원"  # 데이터 테이블에 반영
             ]
         }), hide_index=True)
 
@@ -232,7 +264,7 @@ else:
         st.subheader("📈 최근 5일 주가 흐름")
 
         recent = df.tail(5).copy()
-        recent.index = recent.index.strftime("%m/%d")
+        recent.index = pd.to_datetime(recent.index).strftime("%m/%d")
 
         chart = recent[["Close"]]
         chart.columns = ["종가"]
@@ -249,10 +281,15 @@ else:
         st.info(result["ai"])
 
         # ==============================
-        # 뉴스 (AI 밑)
+        # 뉴스 (실시간 크롤링 연동)
         # ==============================
         st.subheader("📰 시장 뉴스")
 
-        st.write(f"• [{code}] 거래량 및 변동성 체크 필요")
-        st.write("• 기관/외국인 수급 흐름 확인")
-        st.write("• 최근 5일 추세 기반 방향성 분석")
+        # [수정] 네이버 금융에서 해당 종목 실시간 뉴스를 긁어와 노출
+        news_data = get_realtime_news(code)
+        
+        if news_data:
+            for item in news_data:
+                st.markdown(f"• [{item['title']}]({item['link']})")
+        else:
+            st.write("• 실시간 관련 뉴스를 불러올 수 없습니다.")
