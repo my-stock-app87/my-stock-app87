@@ -2,16 +2,67 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import requests
 
 # 페이지 넓게 쓰기 설정
 st.set_page_config(layout="wide")
 
 # =========================
+# [한국 주식] 이름/코드 통합 검색 시스템
+# =========================
+@st.cache_data(ttl=86400)  # 하루에 한 번만 KRX에서 종목 정보 동기화 (속도 최적화)
+def load_krx_tickers():
+    try:
+        # KRX 정보를 관리하는 네이버 금융 데이터 수집
+        url = 'https://naver.com'
+        # 일반 주식 정보를 가장 확실하게 가져오기 위해 상장법인목록 엑셀 가공용 데이터 활용
+        df_kospi = pd.read_html('https://krx.co.kr', header=0)[0]
+        df_kospi = df_kospi[['회사명', '종목코드']].copy()
+        df_kospi['종목코드'] = df_kospi['종목코드'].astype(str).str.zfill(6)
+        
+        # 딕셔너리 형태로 변환 (키: 회사명, 값: 종목코드)
+        ticker_dict = pd.series(df_kospi.종목코드.values, index=df_kospi.회사명).to_dict()
+        return ticker_dict
+    except:
+        # 만약 KRX 서버가 막혔을 때를 대비한 최소한의 우량주 비상용 리스트
+        return {"삼성전자": "005930", "SK하이닉스": "000660", "현대차": "005380", "네이버": "035420", "카카오": "035720"}
+
+def search_korean_code(query, ticker_dict):
+    query = str(query).strip()
+    if not query:
+        return None, None
+        
+    # Case 1: 숫자로만 된 코드를 입력했을 때 (예: 005930)
+    if query.isdigit():
+        code = query.zfill(6)
+        # 딕셔너리에서 코드를 역추적해서 회사명 찾기
+        name = next((k for k, v in ticker_dict.items() if v == code), "알 수 없는 종목")
+        return code, name
+        
+    # Case 2: 한글/영문 종목명을 입력했을 때 (예: 삼성전자, 삼성, AAPL)
+    # 글자가 정확히 일치하는지 먼저 확인
+    if query in ticker_dict:
+        return ticker_dict[query], query
+        
+    # 포함하는 글자가 있는지 부분 검색 (예: '삼성'만 쳤을 때 '삼성전자' 매칭)
+    matched_names = [k for k in ticker_dict.keys() if query.lower() in k.lower()]
+    if matched_names:
+        # 가장 유사한 첫 번째 종목 연동
+        best_match = matched_names[0]
+        return ticker_dict[best_match], best_match
+        
+    # 미국 주식 티커 형태일 가능성이 있는 경우 (예: AAPL)
+    if query.isalpha():
+        return query.upper(), query.upper()
+        
+    return None, None
+
+
+# =========================
 # [글로벌] 전 세계 증시 흐름 가져오기
 # =========================
-@st.cache_data(ttl=3600)  # 1시간 동안 글로벌 데이터 캐싱 (속도 향상)
+@st.cache_data(ttl=3600)
 def load_global_markets():
-    # 전 세계 대표 지수 목록 (미국, 한국, 일본, 대만, 독일)
     indices = {
         "🇺🇸 나스닥 (NASDAQ)": "^IXIC",
         "🇺🇸 S&P 500": "^GSPC",
@@ -21,21 +72,14 @@ def load_global_markets():
         "🇹🇼 대만 가권": "^TWII",
         "🇩🇪 독일 DAX": "^GDAXI"
     }
-    
     market_summary = []
-    
     for name, ticker in indices.items():
         try:
-            # 최근 5일치 데이터를 가져와서 전일 대비 등락률 계산
             df = yf.download(ticker, period="5d", interval="1d", auto_adjust=True)
-            if df is None or df.empty:
-                continue
-            
+            if df is None or df.empty: continue
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = [col[-1] for col in df.columns]
-                
             close_series = df["Close"].values.flatten()
-            
             if len(close_series) >= 2:
                 current_price = float(close_series[-1])
                 prev_price = float(close_series[-2])
@@ -43,31 +87,30 @@ def load_global_markets():
                 market_summary.append({"시장": name, "현재가": current_price, "등락률": change_rate})
         except:
             continue
-            
     return market_summary
 
 
 # =========================
-# [한국 주식] 전용 데이터 로딩 (종목코드 보완)
+# 데이터 로딩 시스템 (종목 자동 검증)
 # =========================
-def load_korean_data(code):
+def load_korean_data(final_code):
     try:
-        # 사용자가 숫지만 입력했을 경우 (예: 005930 -> 005930.KS 자동 변환)
-        code = str(code).strip()
-        if code.isdigit():
-            if len(code) == 6:
-                # 일반적인 코스피/코스닥은 야후 파이낸스에서 .KS로 먼저 시도 후 없으면 .KQ 시도
-                full_code = f"{code}.KS"
-            else:
-                full_code = code
+        # 야후 파이낸스 형식으로 변환 (.KS 접미사 테스트)
+        if final_code.isdigit() and len(final_code) == 6:
+            full_code = f"{final_code}.KS"
         else:
-            full_code = code
+            full_code = final_code
 
         df = yf.download(full_code, period="6mo", interval="1d", auto_adjust=True)
 
-        # .KS로 안 불려오면 .KQ(코스닥)로 재시도
-        if (df is None or df.empty) and f"{code}.KS" == full_code:
-            full_code = f"{code}.KQ"
+        # .KS로 실패 시 .KQ(코스닥)로 스위칭 재시도
+        if (df is None or df.empty) and f"{final_code}.KS" == full_code:
+            full_code = f"{final_code}.KQ"
+            df = yf.download(full_code, period="6mo", interval="1d", auto_adjust=True)
+
+        # 만약 해외 주식이거나 접미사 없는 구조인 경우 그대로 재시도
+        if df is None or df.empty:
+            full_code = final_code
             df = yf.download(full_code, period="6mo", interval="1d", auto_adjust=True)
 
         if df is None or df.empty:
@@ -91,11 +134,11 @@ def load_korean_data(code):
 
     except Exception as e:
         st.error(f"데이터 로드 중 에러 발생: {e}")
-        return None, code
+        return None, final_code
 
 
 # =========================
-# 특징 계산
+# 특징 계산 및 핵심 알고리즘
 # =========================
 def build_features(df):
     try:
@@ -104,18 +147,15 @@ def build_features(df):
 
         close = pd.Series(close_series)
         volume = pd.Series(volume_series)
-
         returns = close.pct_change().dropna()
 
-        if len(returns) == 0:
-            return None
+        if len(returns) == 0: return None
 
         pos_count = int((returns.values > 0.02).sum())
         neg_count = int((returns.values < -0.02).sum())
         momentum = float(pos_count - neg_count)
 
         volatility = float(returns.std()) if not np.isnan(returns.std()) else 0.0
-
         vol_mean = float(volume.rolling(20).mean().iloc[-1])
         vol_std = float(volume.rolling(20).std().iloc[-1])
 
@@ -130,26 +170,17 @@ def build_features(df):
 
         support_dist = float((price - support) / price) if price > 0 else 0.0
         resistance_dist = float((resistance - price) / price) if price > 0 else 0.0
-
         trend = float(returns.mean())
 
         return {
-            "momentum": momentum,
-            "volatility": volatility,
-            "volume_z": volume_z,
-            "support_dist": support_dist,
-            "resistance_dist": resistance_dist,
-            "trend": trend,
-            "price": price
+            "momentum": momentum, "volatility": volatility, "volume_z": volume_z,
+            "support_dist": support_dist, "resistance_dist": resistance_dist,
+            "trend": trend, "price": price
         }
     except Exception as e:
         st.error(f"특징 계산 중 에러 발생: {e}")
         return None
 
-
-# =========================
-# 점수 및 해석 시스템 (기존 로직 유지)
-# =========================
 def score(features):
     if features is None: return None
     vol = features["volatility"]
@@ -171,14 +202,14 @@ def explain(s):
     elif s > 45: return "🟡 관찰 구간", "#FFD600"
     else: return "🔴 약세 구간", "#D50000"
 
-def run_analysis(code, df):
+def run_analysis(code, name, df):
     if df is None: return {"error": "데이터 없음"}
     features = build_features(df)
     if features is None: return {"error": "특징 계산 실패"}
     scores = score(features)
     if scores is None: return {"error": "점수 계산 실패"}
     label, color = explain(scores["final_score"])
-    return {"종목": code, "현재가": features["price"], **features, **scores, "상태": label, "color": color}
+    return {"종목명": name, "티커": code, "현재가": features["price"], **features, **scores, "상태": label, "color": color}
 
 
 # =========================
@@ -186,7 +217,7 @@ def run_analysis(code, df):
 # =========================
 st.title("📊 AI 주식 분석 엔진 (글로벌 매크로 + 한국 대시보드)")
 
-# 1단: 글로벌 전 세계 증시 실시간 흐름 전광판
+# 상단 글로벌 지수 전광판
 st.subheader("🌐 글로벌 시장 주요 지수 흐름")
 markets = load_global_markets()
 
@@ -194,54 +225,52 @@ if markets:
     cols = st.columns(len(markets))
     for i, m in enumerate(markets):
         with cols[i]:
-            # 상승일 때 빨간색(한국 기준), 하락일 때 파란색 글씨 처리
             color = "#FF1744" if m["등락률"] >= 0 else "#2979FF"
             sign = "+" if m["등락률"] >= 0 else ""
             st.metric(
                 label=m["시장"], 
                 value=f"{m['현재가']:.2f}", 
-                delta=f"{sign}{m['등락률']:.2f}%",
-                delta_color="normal"
+                delta=f"{sign}{m['등락률']:.2f}%"
             )
-else:
-    st.info("글로벌 시장 지수를 불러오는 중입니다...")
 
 st.markdown("---")
 
-# 2단: 한국 주식 전용 종목 분석기
-st.subheader("🇰🇷 한국 주식 정밀 분석 시스템")
-code_input = st.text_input("한국 주식 종목코드 6자리 또는 티커 입력 (예: 삼성전자 005930 / SK하이닉스 000660)")
+# 하단 스마트 통합 검색기
+st.subheader("🇰🇷 한국 주식 통합 검색 및 AI 분석")
+krx_dict = load_krx_tickers()
+
+# 텍스트 입력창 가이드라인 변경
+search_input = st.text_input("종목명 또는 종목코드 6자리를 입력하세요 (예: 삼성전자 / 현대차 / 000660)")
 
 if st.button("분석하기"):
-    if not code_input:
-        st.warning("종목 코드를 입력하세요")
+    if not search_input:
+        st.warning("검색어를 입력해 주세요.")
     else:
-        with st.spinner("야후 파이낸스 인덱싱 및 AI 분석 연산 중..."):
-            df, final_code = load_korean_data(code_input)
-
-            if df is None:
-                st.error(f"데이터를 불러올 수 없습니다. 종목 코드({code_input})를 다시 확인하세요.")
+        with st.spinner("KRX 매핑 테이블 대조 및 주가 수집 중..."):
+            # 입력한 검색어에서 실제 종목코드가 무엇인지 추출
+            target_code, target_name = search_korean_code(search_input, krx_dict)
+            
+            if not target_code:
+                st.error(f"'{search_input}'에 해당하는 종목을 국내 상장 목록에서 찾을 수 없습니다.")
             else:
-                result = run_analysis(final_code, df)
+                df, final_ticker = load_korean_data(target_code)
 
-                if "error" in result:
-                    st.error(result["error"])
+                if df is None:
+                    st.error(f"'{target_name}({target_code})' 데이터를 불러오지 못했습니다. 시장 포맷을 확인하세요.")
                 else:
-                    # 결과 보기 좋게 레이아웃 분할
-                    res_col1, res_col2 = st.columns(2)
-                    
-                    with res_col1:
-                        st.write("### 📈 종합 분석 결과")
-                        st.dataframe(pd.DataFrame([result]).T.rename(columns={0: "수치값"}))
-                    
-                    with res_col2:
-                        st.write("### 🤖 AI 최종 진단")
-                        st.markdown(
-                            f"<div style='padding:20px; border-radius:10px; background-color:#f0f2f6; text-align:center;'>"
-                            f"<h4>확정 분석 티커: <span style='color:#333;'>{result['종목']}</span></h4>"
-                            f"<h1>현재가: <span style='color:#333;'>{int(result['현재가']):,}원</span></h1>"
-                            f"<h2 style='color:{result['color']}; font-size:40px; font-weight:bold;'>{result['상태']}</h2>"
-                            f"<h3>최종 AI 스코어: <span style='color:{result['color']};'>{result['final_score']}점</span></h3>"
-                            f"</div>",
-                            unsafe_allow_html=True
-                        )
+                    result = run_analysis(final_ticker, target_name, df)
+
+                    if "error" in result:
+                        st.error(result["error"])
+                    else:
+                        res_col1, res_col2 = st.columns(2)
+                        
+                        with res_col1:
+                            st.write(f"### 📈 {target_name} 상세 지표")
+                            st.dataframe(pd.DataFrame([result]).T.rename(columns={0: "수치값"}))
+                        
+                        with res_col2:
+                            st.write("### 🤖 AI 최종 진단 결과")
+                            st.markdown(
+                                f"<div style='padding:20px; border-radius:10px; background-color:#f0f2f6; text-align:center;'>",
+                                unsafe_allow_html=True
