@@ -4,66 +4,81 @@ import pandas as pd
 import numpy as np
 
 # =========================
-# 데이터 로딩
+# 데이터 로딩 (최신 yfinance 대응)
 # =========================
 def load_data(code):
     try:
-        df = yf.download(code, period="6mo", interval="1d")
+        # group_by="column" 옵션을 추가하여 데이터 구조가 깨지는 현상을 방지합니다.
+        df = yf.download(code, period="6mo", interval="1d", group_by="column")
 
         if df is None or df.empty:
             return None
 
-        df = df.dropna()
+        # 다중 인덱스로 데이터가 들어올 경우, 최하단 단일 열(Close, Volume 등)만 남기고 정리합니다.
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(-1)
+
+        df = df.dropna(subset=["Close", "Volume"])
         df = df.sort_index()
 
         return df
 
-    except:
+    except Exception as e:
+        st.error(f"데이터 로드 중 에러 발생: {e}")
         return None
 
 
 # =========================
-# 특징 계산
+# 특징 계산 (안전한 숫자형 변환 추가)
 # =========================
 def build_features(df):
+    try:
+        # 단일 열 추출 후 1차원 numpy 배열(values)로 다루어 TypeError를 원천 차단합니다.
+        close = df["Close"].squeeze().astype(float)
+        volume = df["Volume"].squeeze().astype(float)
 
-    close = df["Close"].astype(float)
-    volume = df["Volume"].astype(float)
+        returns = close.pct_change().dropna()
 
-    returns = close.pct_change().dropna()
+        if len(returns) == 0:
+            return None
 
-    if len(returns) == 0:
+        # .values를 명시하여 2차원 DataFrame 크기 비교 오류(TypeError)를 해결합니다.
+        pos_count = int((returns.values > 0.02).sum())
+        neg_count = int((returns.values < -0.02).sum())
+        momentum = float(pos_count - neg_count)
+
+        volatility = float(returns.std()) if not np.isnan(returns.std()) else 0.0
+
+        # rolling 연산 후 마지막 값을 안전하게 단일 숫자로 가져옵니다.
+        vol_mean = float(volume.rolling(20).mean().iloc[-1])
+        vol_std = float(volume.rolling(20).std().iloc[-1])
+
+        volume_z = 0.0
+        if vol_std and not np.isnan(vol_std):
+            last_vol = float(volume.iloc[-1])
+            volume_z = (last_vol - vol_mean) / (vol_std + 1e-9)
+
+        support = float(close.rolling(20).min().iloc[-1])
+        resistance = float(close.rolling(20).max().iloc[-1])
+        price = float(close.iloc[-1])
+
+        support_dist = float((price - support) / price)
+        resistance_dist = float((resistance - price) / price)
+
+        trend = float(returns.mean())
+
+        return {
+            "momentum": momentum,
+            "volatility": volatility,
+            "volume_z": volume_z,
+            "support_dist": support_dist,
+            "resistance_dist": resistance_dist,
+            "trend": trend,
+            "price": price
+        }
+    except Exception as e:
+        st.error(f"특징 계산 중 에러 발생: {e}")
         return None
-
-    momentum = float((returns > 0.02).sum() - (returns < -0.02).sum())
-
-    volatility = float(returns.std()) if not np.isnan(returns.std()) else 0.0
-
-    vol_mean = volume.rolling(20).mean().iloc[-1]
-    vol_std = volume.rolling(20).std().iloc[-1]
-
-    volume_z = 0.0
-    if vol_std and not np.isnan(vol_std):
-        volume_z = (volume.iloc[-1] - vol_mean) / (vol_std + 1e-9)
-
-    support = float(close.rolling(20).min().iloc[-1])
-    resistance = float(close.rolling(20).max().iloc[-1])
-    price = float(close.iloc[-1])
-
-    support_dist = (price - support) / price
-    resistance_dist = (resistance - price) / price
-
-    trend = float(returns.mean())
-
-    return {
-        "momentum": momentum,
-        "volatility": volatility,
-        "volume_z": float(volume_z),
-        "support_dist": float(support_dist),
-        "resistance_dist": float(resistance_dist),
-        "trend": trend,
-        "price": price
-    }
 
 
 # =========================
