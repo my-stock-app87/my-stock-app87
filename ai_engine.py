@@ -1,110 +1,126 @@
 import pandas as pd
-collect_market_data(region="KR")
-collect_market_data(region="GLOBAL")
-# =========================
-# 1. 점수 계산 엔진
-# =========================
-def calculate_scores(df):
 
-    # 거래량 변화
-    vol_score = min(
-        100,
-        df["Volume"].pct_change().fillna(0).abs().mean() * 1200
+# =========================
+# 1. 특징 계산
+# =========================
+def build_features(df):
+
+    returns = df["Close"].pct_change()
+
+    # 1) 모멘텀 (급상승/급하강)
+    sharp_up = (returns > 0.03).sum()
+    sharp_down = (returns < -0.03).sum()
+    momentum = sharp_up - sharp_down
+
+    # 2) 변동성 (압축 여부)
+    volatility = returns.std()
+
+    # 3) 거래량 이상 (Z-score)
+    vol_mean = df["Volume"].rolling(20).mean()
+    vol_std = df["Volume"].rolling(20).std()
+    volume_z = (df["Volume"].iloc[-1] - vol_mean.iloc[-1]) / (vol_std.iloc[-1] + 1e-9)
+
+    # 4) 지지 / 저항 구조
+    support = df["Close"].rolling(20).min().iloc[-1]
+    resistance = df["Close"].rolling(20).max().iloc[-1]
+    price = df["Close"].iloc[-1]
+
+    support_dist = (price - support) / price
+    resistance_dist = (resistance - price) / price
+
+    # 5) 추세 (방향성)
+    trend = df["Close"].pct_change().mean()
+
+    return {
+        "momentum": momentum,
+        "volatility": volatility,
+        "volume_z": volume_z,
+        "support_dist": support_dist,
+        "resistance_dist": resistance_dist,
+        "trend": trend,
+        "price": price
+    }
+
+
+# =========================
+# 2. 타이밍 점수
+# =========================
+def score(features):
+
+    # 🔥 1) 압축 상태 (중요)
+    compression = max(0, 1 - features["volatility"] * 10)
+
+    # 🔥 2) 수급 이상
+    volume_score = min(100, abs(features["volume_z"]) * 20)
+
+    # 🔥 3) 지지 근처 / 저항 근처
+    structure_score = (
+        (1 - features["support_dist"]) * 50 +
+        (1 - features["resistance_dist"]) * 50
     )
 
-    # 상승 강도
-    up_score = max(
-        0,
-        df["Close"].pct_change().mean() * 1200 + 50
-    )
+    # 🔥 4) 모멘텀
+    momentum_score = features["momentum"] * 10
 
-    # 수급 강도 (단순화)
-    force_score = (vol_score + up_score) / 2
+    # 🔥 5) 추세
+    trend_score = features["trend"] * 1000
 
-    # 변동성 (낮을수록 매집 가능성)
-    volatility_score = df["Close"].pct_change().std() * 1000
-
-    # 최종 점수 (핵심)
+    # 최종
     final_score = (
-        vol_score * 0.4 +
-        up_score * 0.3 +
-        force_score * 0.3
+        compression * 30 +
+        volume_score * 0.25 +
+        structure_score * 0.2 +
+        momentum_score * 0.15 +
+        trend_score * 0.1
     )
 
     return {
-        "vol_score": round(vol_score, 2),
-        "up_score": round(up_score, 2),
-        "force_score": round(force_score, 2),
-        "volatility_score": round(volatility_score, 2),
+        "compression": round(compression, 3),
+        "volume_score": round(volume_score, 2),
+        "structure_score": round(structure_score, 2),
+        "momentum_score": round(momentum_score, 2),
+        "trend_score": round(trend_score, 2),
         "final_score": round(final_score, 2)
     }
 
 
 # =========================
-# 2. 해석 엔진 (핵심 개선)
+# 3. 해석
 # =========================
-def explain(scores):
+def explain(score_dict):
 
-    score = scores["final_score"]
-    volatility = scores["volatility_score"]
+    s = score_dict["final_score"]
 
-    reasons = []
+    if s > 70:
+        return "🟢 급등 가능 구간", "진입 타이밍 가능성 높음", "#00C853"
 
-    # 📊 조건 해석
-    if scores["vol_score"] > 60:
-        reasons.append("거래량 급증 → 세력 개입 가능성")
-
-    if scores["force_score"] > 50:
-        reasons.append("수급 강세 → 기관/외국인 유입")
-
-    if volatility < 30:
-        reasons.append("변동성 낮음 → 매집 구간 가능성")
-
-    if score > 70:
-        position = "🟢 매수 후보 (강세)"
-        ai = "상승 가능성 높음"
-        color = "#00C853"
-
-    elif score > 40:
-        position = "🟡 관찰 구간"
-        ai = "추세 확인 필요"
-        color = "#FFD600"
+    elif s > 45:
+        return "🟡 관찰 구간", "움직임 준비 중", "#FFD600"
 
     else:
-        position = "🔴 회피 구간"
-        ai = "하락 압력 강함"
-        color = "#D50000"
-
-    return position, ai, color, reasons
+        return "🔴 비활성 구간", "아직 에너지 부족", "#D50000"
 
 
 # =========================
-# 3. 메인 분석 함수
+# 4. 메인 함수
 # =========================
-def run_analysis(code):
+def run_analysis(code, df):
 
-    df = collect_korean_market_data(code)
-
-    if df.empty:
+    if df is None or df.empty:
         return {"error": "데이터 없음"}
 
-    scores = calculate_scores(df)
-    position, ai, color, reasons = explain(scores)
-
-    last_price = df["Close"].iloc[-1]
+    features = build_features(df)
+    scores = score(features)
+    position, ai, color = explain(scores)
 
     return {
         "종목": code,
-        "현재가": int(last_price),
+        "현재가": int(features["price"]),
 
-        # 점수
+        **features,
         **scores,
 
-        # 판단
         "position": position,
         "ai": ai,
-        "color": color,
-
-        # 설명
-        "reasons": reasons
+        "color": color
     }
