@@ -23,79 +23,51 @@ st.markdown("""
     background: linear-gradient(to bottom, #0F172A, #111827);
     color: white;
 }
+
 .stButton>button {
     background-color: #FF4B4B;
     color: white;
     border-radius: 10px;
     height: 45px;
     font-weight: bold;
-    width: 100%;
-}
-.news-box {
-    background-color: #1E293B;
-    padding: 15px;
-    border-radius: 10px;
-    margin-bottom: 10px;
-}
-.news-title {
-    font-size: 16px;
-    font-weight: bold;
-    color: #F8FAFC;
-    text-decoration: none;
-}
-.news-info {
-    font-size: 12px;
-    color: #94A3B8;
-    margin-top: 5px;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 세션 및 상태 관리
+# 2. 세션
 # ==========================================
 if "page" not in st.session_state:
     st.session_state.page = "intro"
-if "selected_code" not in st.session_state:
-    st.session_state.selected_code = None
-if "selected_name" not in st.session_state:
-    st.session_state.selected_name = ""
 
 # ==========================================
-# 3. 전종목 마스터 데이터 로딩 (한글 검색용 핵심 추가)
+# 3. 종목 데이터
 # ==========================================
-@st.cache_data(ttl=86400) # 하루 동안 캐싱
-def load_all_krx_stocks():
-    try:
-        # KRX 전체 상장 종목 리스트 가져오기 (코스피, 코스닥, 코넥스 포함)
-        df_krx = fdr.StockListing('KRX')
-        # 필요한 컬럼(종목코드, 종목명)만 추출하여 딕셔너리로 변환
-        # 검색 효율을 위해 종목명 양끝 공백을 제거하고 대문자로 변환하여 저장
-        stock_dict = {str(row['Name']).strip().upper(): str(row['Code']) for _, row in df_krx.iterrows()}
-        return stock_dict
-    except Exception as e:
-        st.error(f"종목 마스터 데이터를 불러오는 데 실패했습니다: {e}")
-        return {}
-
-# 앱 시작 시 마스터 데이터 로드
-KRX_STOCKS = load_all_krx_stocks()
+STOCK_MAP = {
+    "삼성전자": "005930",
+    "카카오": "035720",
+    "네이버": "035420",
+    "sk하이닉스": "000660",
+    "LG에너지솔루션": "373220",
+    "현대차": "005380",
+    "기아": "000270",
+    "삼성바이오로직스": "207940"
+}
 
 # ==========================================
-# 4. 종목 코드 변환 함수 (전체 종목 대응하도록 수정)
+# 4. 종목 코드 변환 함수 (핵심)
 # ==========================================
 def resolve_stock_code(user_input):
+
     user_input = user_input.strip()
-    
-    # 1. 사용자가 이미 6자리 숫자를 입력한 경우
+
     if user_input.isdigit() and len(user_input) == 6:
-        return user_input, None
-    
-    # 2. 한글/영문 종목명을 입력한 경우 (대소문자 구분 없음)
-    search_name = user_input.upper()
-    if search_name in KRX_STOCKS:
-        return KRX_STOCKS[search_name], user_input
-    
-    return None, None
+        return user_input
+
+    if user_input in STOCK_MAP:
+        return STOCK_MAP[user_input]
+
+    return None
 
 # ==========================================
 # 5. 데이터 로딩
@@ -104,14 +76,12 @@ def resolve_stock_code(user_input):
 def get_stock_data(code):
     end = datetime.datetime.today()
     start = end - datetime.timedelta(days=30)
-    try:
-        df = fdr.DataReader(code, start, end)
-        return df if not df.empty else None
-    except:
-        return None
+
+    df = fdr.DataReader(code, start, end)
+    return df if not df.empty else None
 
 # ==========================================
-# 6. 실시간 뉴스 크롤링 함수
+# 6. 실시간 뉴스 크롤링 함수 (추가)
 # ==========================================
 @st.cache_data(ttl=300)
 def get_realtime_news(code):
@@ -123,89 +93,392 @@ def get_realtime_news(code):
         
         news_list = []
         titles = soup.select(".title a")
-        info_sources = soup.select(".info")
-        info_dates = soup.select(".date")
         
-        for i in range(min(5, len(titles))):
-            title_text = titles[i].get_text(strip=True)
-            link = titles[i]['href']
-            if link.startswith('/'):
-                link = "https://naver.com" + link
-                
-            source = info_sources[i].get_text(strip=True) if i < len(info_sources) else "언론사"
-            date = info_dates[i].get_text(strip=True) if i < len(info_dates) else ""
+        for title in titles[:3]:  # 상위 3개 뉴스만 추출
+            text = title.get_text(strip=True)
+            href = title["href"]
+            # 네이버 금융 뉴스 링크 주소 완성
+            link = f"https://naver.com{href}"
+            news_list.append({"title": text, "link": link})
             
-            news_list.append({
-                "title": title_text,
-                "link": link,
-                "source": source,
-                "date": date
-            })
         return news_list
-    except Exception as e:
+    except:
         return []
 
 # ==========================================
-# 7. 페이지 랜더링 로직
+# 7. 분석 로직
 # ==========================================
+def analyze(df):
 
-# --- 인트로 페이지 ---
+    latest = df.iloc[-1]
+    prev = df.iloc[-2]
+
+    current = int(latest["Close"])
+    prev_close = int(prev["Close"])
+
+    high = int(latest["High"])
+    low = int(latest["Low"])
+    volume = int(latest["Volume"])
+
+    change = current - prev_close
+    change_pct = round((change / prev_close) * 100, 2)
+
+    avg_vol = df["Volume"].tail(5).mean()
+    vol_score = min(max(int(volume / avg_vol * 50), 10), 95)
+
+    price_pos = (current - low) / max(high - low, 1) * 100
+    up_score = min(max(int(price_pos * 0.7 + change_pct * 5), 5), 98)
+
+    # 포지션
+    if up_score >= 70:
+        position = "🔥 상승 우세"
+        color = "#FF4B4B"
+    elif up_score <= 35:
+        position = "⚠ 약세"
+        color = "#1F77B4"
+    else:
+        position = "👀 관망"
+        color = "#FFA500"
+
+    # AI 코멘트
+    if "상승" in position:
+        ai = "거래량 증가 + 상승 흐름 유지. 눌림 매수 전략 유효."
+    elif "약세" in position:
+        ai = "하락 압력 존재. 신규 진입은 보수적으로."
+    else:
+        ai = "횡보 구간. 거래량 변화 확인 필요."
+
+    # [수정] 예상 상승가 계산 로직 추가 (상승 점수와 최근 변동성을 기반으로 산출)
+    estimated_target = int(current * (1 + (up_score / 100) * 0.05))
+
+    return {
+        "current": current,
+        "change": change,
+        "change_pct": change_pct,
+        "high": high,
+        "low": low,
+        "volume": volume,
+        "vol_score": vol_score,
+        "up_score": up_score,
+        "position": position,
+        "color": color,
+        "ai": ai,
+        "buy": int(low * 1.003),
+        "sell": int(high * 0.997),
+        "estimated_target": estimated_target  # 반환 값에 추가
+    }
+
+# ==========================================
+# 8. INTRO
+# ==========================================
 if st.session_state.page == "intro":
-    st.title("🔥 주식주신 PRO")
-    st.subheader("대한민국 모든 상장 종목을 한글로 검색하세요.")
-    
-    user_search = st.text_input("검색어 입력 (예: 삼성전자, 에코프로, 카카오뱅크, 005930)", placeholder="종목명 또는 코드를 입력하세요...")
-    search_btn = st.button("주가 분석 및 뉴스 보기")
-    
-    if search_btn and user_search:
-        code, matched_name = resolve_stock_code(user_search)
-        if code:
-            # 코드로 검색했을 경우 역으로 종목명을 찾아옴
-            if not matched_name:
-                matched_name = next((k for k, v in KRX_STOCKS.items() if v == code), code)
-            
-            st.session_state.selected_code = code
-            st.session_state.selected_name = matched_name
-            st.session_state.page = "dashboard"
-            st.rerun()
-        else:
-            st.error("존재하지 않는 종목명이거나 잘못된 코드입니다. 대소문자 및 띄어쓰기를 확인해 주세요.")
 
-# --- 대시보드 페이지 ---
-elif st.session_state.page == "dashboard":
-    code = st.session_state.selected_code
-    name = st.session_state.selected_name
-    
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        st.title(f"📊 {name} ({code})")
-    with col2:
-        if st.button("처음으로"):
-            st.session_state.page = "intro"
-            st.rerun()
-            
-    # 주가 데이터 로드 및 차트 출력
-    with st.spinner("주가 데이터를 가져오는 중..."):
+    st.markdown("<h1 style='text-align:center;'>🔥 주식주신 PRO</h1>", unsafe_allow_html=True)
+
+    if st.button("분석 시작"):
+        st.session_state.page = "analysis"
+        st.rerun()
+
+# ==========================================
+# 9. ANALYSIS
+# ==========================================
+else:
+
+    if st.button("🏠 홈"):
+        st.session_state.page = "intro"
+        st.rerun()
+
+    st.title("📊 주식 분석실")
+
+    user_input = st.text_input("종목명 또는 6자리 코드 입력")
+    btn = st.button("🚀 분석 시작")
+
+    if btn and user_input:
+
+        # ==============================
+        # 코드 변환 (한글 검색 지원)
+        # ==============================
+        code = resolve_stock_code(user_input)
+
+        if code is None:
+            st.error("종목명을 정확히 입력하세요 (예: 삼성전자, 카카오, 005930)")
+            st.stop()
+
         df = get_stock_data(code)
+
+        if df is None:
+            st.error("데이터를 불러올 수 없습니다.")
+            st.stop()
+
+        result = analyze(df)
+
+        # ==============================
+        # 현재가
+        # ==============================
+        st.metric(
+            "현재가",
+            f"{result['current']:,}원",
+            f"{result['change']:,} ({result['change_pct']}%)"
+        )
+
+        st.markdown(
+            f"<div style='color:{result['color']}; font-size:20px;'>"
+            f"{result['position']}</div>",
+            unsafe_allow_html=True
+        )
+
+        st.write("")
+
+        # ==============================
+        # 핵심 지표 (예상 상승가 항목 추가)
+        # ==============================
+        st.subheader("📊 핵심 분석 지표")
+
+        st.dataframe(pd.DataFrame({
+            "항목": ["고가", "저가", "거래량", "거래 집중도", "상승 점수", "예상 상승가"],
+            "값": [
+                f"{result['high']:,}",
+                f"{result['low']:,}",
+                f"{result['volume']:,}",
+                f"{result['vol_score']}%",
+                f"{result['up_score']}%",
+                f"{result['estimated_target']:,}원"  # 데이터 테이블에 반영
+            ]
+        }), hide_index=True)
+
+        # ==============================
+        # 시장 체크 포인트 (핵심지표 아래)
+        # ==============================
+        st.subheader("🎯 시장 체크 포인트")
+
+        st.write(f"• 추천 매수가: {result['buy']:,}원")
+        st.write(f"• 추천 매도가: {result['sell']:,}원")
+        st.write(f"• 단기 지지선: {result['low']:,}원")
+        st.write(f"• 단기 저항선: {result['high']:,}원")
+
+        st.write("")
+
+        # ==============================
+        # 최근 5일 차트
+        # ==============================
+        st.subheader("📈 최근 5일 주가 흐름")
+
+        recent = df.tail(5).copy()
+        recent.index = pd.to_datetime(recent.index).strftime("%m/%d")
+
+        chart = recent[["Close"]]
+        chart.columns = ["종가"]
+
+        st.line_chart(chart)
+
+        st.caption("최근 5거래일 기준")
+
+        # ==============================
+        # AI 코멘트
+        # ==============================
+        st.subheader("💡 AI 분석 코멘트")
+
+        st.info(result["ai"])
+
+        # ==============================
+        # 뉴스 (실시간 크롤링 연동)
+        # ==============================
+        st.subheader("📰 시장 뉴스")
+
+        # [수정] 네이버 금융에서 해당 종목 실시간 뉴스를 긁어와 노출
+        news_data = get_realtime_news(code)
         
-    if df is not None and not df.empty:
-        st.subheader("📈 최근 30일 주가 추이")
-        st.line_chart(df['Close'])
+        if news_data:
+            for item in news_data:
+                st.markdown(f"• [{item['title']}]({item['link']})")
+        else:
+            st.write("• 실시간 관련 뉴스를 불러올 수 없습니다.")
+
+# ==========================================
+# 7. 분석 로직
+# ==========================================
+def analyze(df):
+
+    latest = df.iloc[-1]
+    prev = df.iloc[-2]
+
+    current = int(latest["Close"])
+    prev_close = int(prev["Close"])
+
+    high = int(latest["High"])
+    low = int(latest["Low"])
+    volume = int(latest["Volume"])
+
+    change = current - prev_close
+    change_pct = round((change / prev_close) * 100, 2)
+
+    avg_vol = df["Volume"].tail(5).mean()
+    vol_score = min(max(int(volume / avg_vol * 50), 10), 95)
+
+    price_pos = (current - low) / max(high - low, 1) * 100
+    up_score = min(max(int(price_pos * 0.7 + change_pct * 5), 5), 98)
+
+    # 포지션
+    if up_score >= 70:
+        position = "🔥 상승 우세"
+        color = "#FF4B4B"
+    elif up_score <= 35:
+        position = "⚠ 약세"
+        color = "#1F77B4"
     else:
-        st.warning("주가 데이터를 가져오지 못했습니다. (거래정지 종목이거나 코드 오류일 수 있습니다.)")
-        
-    # 실시간 뉴스 로드 및 출력
-    st.subheader("📰 실시간 주요 뉴스")
-    with st.spinner("최신 뉴스를 긁어오는 중..."):
-        news_items = get_realtime_news(code)
-        
-    if news_items:
-        for item in news_items:
-            st.markdown(f"""
-            <div class="news-box">
-                <a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a>
-                <div class="news-info">{item['source']} | {item['date']}</div>
-            </div>
-            """, unsafe_allow_html=True)
+        position = "👀 관망"
+        color = "#FFA500"
+
+    # AI 코멘트
+    if "상승" in position:
+        ai = "거래량 증가 + 상승 흐름 유지. 눌림 매수 전략 유효."
+    elif "약세" in position:
+        ai = "하락 압력 존재. 신규 진입은 보수적으로."
     else:
-        st.info("관련 뉴스를 찾을 수 없거나 불러오는데 실패했습니다.")
+        ai = "횡보 구간. 거래량 변화 확인 필요."
+
+    # [수정] 예상 상승가 계산 로직 추가 (상승 점수와 최근 변동성을 기반으로 산출)
+    estimated_target = int(current * (1 + (up_score / 100) * 0.05))
+
+    return {
+        "current": current,
+        "change": change,
+        "change_pct": change_pct,
+        "high": high,
+        "low": low,
+        "volume": volume,
+        "vol_score": vol_score,
+        "up_score": up_score,
+        "position": position,
+        "color": color,
+        "ai": ai,
+        "buy": int(low * 1.003),
+        "sell": int(high * 0.997),
+        "estimated_target": estimated_target  # 반환 값에 추가
+    }
+
+# ==========================================
+# 8. INTRO
+# ==========================================
+if st.session_state.page == "intro":
+
+    st.markdown("<h1 style='text-align:center;'>🔥 주식주신 PRO</h1>", unsafe_allow_html=True)
+
+    if st.button("분석 시작"):
+        st.session_state.page = "analysis"
+        st.rerun()
+
+# ==========================================
+# 9. ANALYSIS
+# ==========================================
+else:
+
+    if st.button("🏠 홈"):
+        st.session_state.page = "intro"
+        st.rerun()
+
+    st.title("📊 주식 분석실")
+
+    user_input = st.text_input("종목명 또는 6자리 코드 입력")
+    btn = st.button("🚀 분석 시작")
+
+    if btn and user_input:
+
+        # ==============================
+        # 코드 변환 (한글 검색 지원)
+        # ==============================
+        code = resolve_stock_code(user_input)
+
+        if code is None:
+            st.error("종목명을 정확히 입력하세요 (예: 삼성전자, 카카오, 005930)")
+            st.stop()
+
+        df = get_stock_data(code)
+
+        if df is None:
+            st.error("데이터를 불러올 수 없습니다.")
+            st.stop()
+
+        result = analyze(df)
+
+        # ==============================
+        # 현재가
+        # ==============================
+        st.metric(
+            "현재가",
+            f"{result['current']:,}원",
+            f"{result['change']:,} ({result['change_pct']}%)"
+        )
+
+        st.markdown(
+            f"<div style='color:{result['color']}; font-size:20px;'>"
+            f"{result['position']}</div>",
+            unsafe_allow_html=True
+        )
+
+        st.write("")
+
+        # ==============================
+        # 핵심 지표 (예상 상승가 항목 추가)
+        # ==============================
+        st.subheader("📊 핵심 분석 지표")
+
+        st.dataframe(pd.DataFrame({
+            "항목": ["고가", "저가", "거래량", "거래 집중도", "상승 점수", "예상 상승가"],
+            "값": [
+                f"{result['high']:,}",
+                f"{result['low']:,}",
+                f"{result['volume']:,}",
+                f"{result['vol_score']}%",
+                f"{result['up_score']}%",
+                f"{result['estimated_target']:,}원"  # 데이터 테이블에 반영
+            ]
+        }), hide_index=True)
+
+        # ==============================
+        # 시장 체크 포인트 (핵심지표 아래)
+        # ==============================
+        st.subheader("🎯 시장 체크 포인트")
+
+        st.write(f"• 추천 매수가: {result['buy']:,}원")
+        st.write(f"• 추천 매도가: {result['sell']:,}원")
+        st.write(f"• 단기 지지선: {result['low']:,}원")
+        st.write(f"• 단기 저항선: {result['high']:,}원")
+
+        st.write("")
+
+        # ==============================
+        # 최근 5일 차트
+        # ==============================
+        st.subheader("📈 최근 5일 주가 흐름")
+
+        recent = df.tail(5).copy()
+        recent.index = pd.to_datetime(recent.index).strftime("%m/%d")
+
+        chart = recent[["Close"]]
+        chart.columns = ["종가"]
+
+        st.line_chart(chart)
+
+        st.caption("최근 5거래일 기준")
+
+        # ==============================
+        # AI 코멘트
+        # ==============================
+        st.subheader("💡 AI 분석 코멘트")
+
+        st.info(result["ai"])
+
+        # ==============================
+        # 뉴스 (실시간 크롤링 연동)
+        # ==============================
+        st.subheader("📰 시장 뉴스")
+
+        # [수정] 네이버 금융에서 해당 종목 실시간 뉴스를 긁어와 노출
+        news_data = get_realtime_news(code)
+        
+        if news_data:
+            for item in news_data:
+                st.markdown(f"• [{item['title']}]({item['link']})")
+        else:
+            st.write("• 실시간 관련 뉴스를 불러올 수 없습니다.")
