@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
+import FinanceDataReader as fdr
 import datetime
-import requests
-import time
 
 # ==========================================
-# 0. 앱 기본 설정 및 테마 스타일링
+# 0. 앱 기본 설정
 # ==========================================
 st.set_page_config(
     page_title="주식주신PRO",
@@ -14,181 +13,361 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-if 'page' not in st.session_state:
-    st.session_state.page = 'intro'
+# ==========================================
+# 1. 기본 스타일
+# ==========================================
+st.markdown("""
+<style>
+.stApp {
+    background: linear-gradient(to bottom, #0F172A, #111827);
+    color: white;
+}
+
+div[data-testid="metric-container"] {
+    background-color: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    padding: 15px;
+    border-radius: 15px;
+}
+
+.stButton>button {
+    background-color: #FF4B4B;
+    color: white;
+    border-radius: 10px;
+    border: none;
+    height: 45px;
+    font-weight: bold;
+}
+
+.stButton>button:hover {
+    background-color: #ff2b2b;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ==========================================
-# 🛠️ 네이버 금융 실시간 시세 크롤링 및 주신 연산 함수 (인증서/키 불필요)
+# 2. 세션 상태
 # ==========================================
-def fetch_naver_stock(stock_code):
-    try:
-        # 네이버 금융 실시간 시세 API URL (모바일 페이지 우회)
-        url = f"https://naver.com{stock_code}/integration"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        
-        response = requests.get(url, headers=headers)
-        data = response.json()
-        
-        # 주식 및 지수 구분 판단 후 데이터 파싱
-        stock_data = data.get('totalInfos', [{}])[0].get('stockAndIndexInfo', {})
-        
-        if not stock_data:
-            return {"error": "올바르지 않은 종목코드이거나 데이터를 가져올 수 없습니다."}
-            
-        # 네이버 금융에서 데이터 추출 (콤마 제거 후 숫자로 변환)
-        current_price = int(stock_data.get('closePrice', '0').replace(',', ''))
-        high_price = int(stock_data.get('highPrice', '0').replace(',', ''))
-        low_price = int(stock_data.get('lowPrice', '0').replace(',', ''))
-        today_volume = int(stock_data.get('accumulatedTradingVolume', '0').replace(',', ''))
-        
-        # 변동폭 데이터
-        compare_price = int(stock_data.get('compareToPreviousClosePrice', '0').replace(',', ''))
-        fluctuation_rate = float(stock_data.get('fluctuationRate', '0.0'))
-        
-        # [핵심] 네이버에서는 전일 대비 거래량%를 직접 주지 않으므로 가상 연산 보정
-        # 실제 서비스 고도화 시 전일 데이터와 비교 연산으로 대체 가능합니다.
-        vol_change_percent = round((today_volume % 150) - 20, 1) # 시뮬레이션용 보정값
-        
-        # ------------------------------------------
-        # 4. 🔥 주신PRO 실시간 데이터 맞춤 알고리즘 계산 연산
-        # ------------------------------------------
-        # [A] 세력 개입 여부 (%) 연산
-        if fluctuation_rate > 2.0 and vol_change_percent > 30:
-            power_score = int(70 + (fluctuation_rate * 5))
-        elif fluctuation_rate < -2.0:
-            power_score = int(15 + (vol_change_percent * 0.1))
-        else:
-            power_score = int(45 + (vol_change_percent * 0.2))
-        power_score = min(max(power_score, 10), 99)
-
-        # [B] 오늘 상승 가능성 (%) 연산
-        price_range = (high_price - low_price) if (high_price - low_price) > 0 else 1
-        price_position = ((current_price - low_price) / price_range) * 100
-        up_score = int((price_position * 0.5) + (fluctuation_rate * 4) + 40)
-        up_score = min(max(up_score, 5), 98)
-
-        # [C] 오늘 추천 매수가 / 추천 매도가 연산
-        target_buy = int(low_price * 1.002)
-        target_sell = int(high_price * 0.998)
-
-        # [D] 단타 가능성 및 장기 보유 매력도 연산
-        short_possibility = min(max(int(abs(fluctuation_rate) * 15 + 30), 15), 95)
-        long_possibility = min(max(int(100 - short_possibility + (fluctuation_rate * 2)), 10), 90)
-
-        # [E] 관망 / 매수 / 매도 포지션 결정
-        if up_score >= 70 and power_score >= 60:
-            position = "🔥 강력 매수"
-            pos_color = "#FF4B4B"
-            ai_advice = "현재 장중 거래량이 실리며 주가가 당일 고점 부근을 강하게 두드리고 있습니다. 세력의 단기 견인 의지가 확인되므로 오늘 추천 매수가 라인에서 적극적인 진입을 추천합니다."
-        elif up_score <= 35:
-            position = "🛑 매도/손절"
-            pos_color = "#1F77B4"
-            ai_advice = "당일 주가 흐름이 시가 대비 무너지고 있으며 하방 지지가 약합니다. 현재 포지션은 리스크 관리가 최우선이며 추가 매수는 금지하고 관망해야 합니다."
-        else:
-            position = "👀 관망 유지"
-            pos_color = "#FFA500"
-            ai_advice = "현재 주가는 뚜렷한 방향성 없이 횡보 박스권에 갇혀 있습니다. 무리한 추격 매수보다는 주신 알고리즘이 제시한 오늘의 추천 매수가까지 기다리는 조절이 필요합니다."
-
-        delta_sign = "▲" if fluctuation_rate > 0 else "▼" if fluctuation_rate < 0 else ""
-        vol_sign = "▲" if vol_change_percent >= 0 else "▼"
-
-        return {
-            "status": "success",
-            "current_price": f"{current_price:,} 원",
-            "delta_text": f"{delta_sign} {compare_price:,} ({fluctuation_rate}%)",
-            "position": position,
-            "pos_color": pos_color,
-            "high_price": f"{high_price:,} 원",
-            "low_price": f"{low_price:,} 원",
-            "today_volume": f"{today_volume:,} 주",
-            "vol_change": f"{vol_sign} {abs(vol_change_percent)}% " + ("상승" if vol_change_percent >= 0 else "하강"),
-            "power_score": f"{power_score} %",
-            "up_score": f"{up_score} %",
-            "target_buy": f"{target_buy:,} 원",
-            "target_sell": f"{target_sell:,} 원",
-            "short_possibility": f"{short_possibility} %",
-            "long_possibility": f"{long_possibility} %",
-            "ai_advice": ai_advice
-        }
-    except Exception as e:
-        return {"error": "종목코드가 올바르지 않거나 네이버 금융 시스템 점검 중입니다. (6자리 숫자를 입력하세요)"}
+if "page" not in st.session_state:
+    st.session_state.page = "intro"
 
 # ==========================================
-# 1. 입구 화면 (Intro Screen)
+# 3. 종목 코드 매핑
 # ==========================================
-if st.session_state.page == 'intro':
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; font-size: 80px;'>🔥</h1>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; color: #FFD700; font-size: 45px;'>주식주신 PRO</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #888888; font-size: 18px;'>당신의 주식 투자를 승리로 이끕니다</p>", unsafe_allow_html=True)
+STOCK_MAP = {
+    "삼성전자": "005930",
+    "sk하이닉스": "000660",
+    "카카오": "035720",
+    "네이버": "035420",
+    "LG에너지솔루션": "373220"
+}
+
+# ==========================================
+# 4. 실시간 데이터 함수
+# ==========================================
+@st.cache_data(ttl=60)
+def get_stock_data(code):
+
+    end = datetime.datetime.today()
+    start = end - datetime.timedelta(days=30)
+
+    df = fdr.DataReader(code, start, end)
+
+    if df.empty:
+        return None
+
+    return df
+
+# ==========================================
+# 5. 분석 함수
+# ==========================================
+def calculate_signal(df):
+
+    latest = df.iloc[-1]
+    prev = df.iloc[-2]
+
+    current_price = int(latest["Close"])
+    prev_close = int(prev["Close"])
+
+    high_price = int(latest["High"])
+    low_price = int(latest["Low"])
+
+    volume = int(latest["Volume"])
+
+    change = current_price - prev_close
+    change_percent = round((change / prev_close) * 100, 2)
+
+    # 거래량 평균
+    avg_volume = int(df["Volume"].tail(5).mean())
+
+    volume_score = min(
+        max(int((volume / avg_volume) * 50), 10),
+        95
+    )
+
+    # 상승 점수
+    price_position = (
+        (current_price - low_price)
+        / max((high_price - low_price), 1)
+    ) * 100
+
+    up_score = min(
+        max(int(price_position * 0.7 + change_percent * 5), 5),
+        98
+    )
+
+    # 추천 포지션
+    if up_score >= 70 and change_percent > 1:
+        position = "🔥 상승 우세"
+        pos_color = "#FF4B4B"
+
+    elif up_score <= 35:
+        position = "⚠ 약세 구간"
+        pos_color = "#1F77B4"
+
+    else:
+        position = "👀 관망 구간"
+        pos_color = "#FFA500"
+
+    # AI 조언
+    if position == "🔥 상승 우세":
+        ai_advice = (
+            "현재 거래량이 평균 대비 증가하며 "
+            "단기 상승 흐름이 유지되고 있습니다. "
+            "추격 매수보다는 눌림 구간 확인 후 접근이 유리합니다."
+        )
+
+    elif position == "⚠ 약세 구간":
+        ai_advice = (
+            "단기 하락 압력이 확인됩니다. "
+            "추가 진입보다는 지지선 확인이 우선입니다."
+        )
+
+    else:
+        ai_advice = (
+            "현재 방향성이 강하지 않은 박스권 흐름입니다. "
+            "거래량 증가 여부를 함께 확인하는 전략이 좋습니다."
+        )
+
+    return {
+        "current_price": current_price,
+        "change": change,
+        "change_percent": change_percent,
+        "high_price": high_price,
+        "low_price": low_price,
+        "volume": volume,
+        "volume_score": volume_score,
+        "up_score": up_score,
+        "position": position,
+        "pos_color": pos_color,
+        "ai_advice": ai_advice
+    }
+
+# ==========================================
+# 6. 입구 화면
+# ==========================================
+if st.session_state.page == "intro":
+
     st.markdown("<br><br>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns()
-    with col2:
-        if st.button("📊 주식 분석 들어가기", use_container_width=True):
-            st.session_state.page = 'analysis'
+
+    st.markdown(
+        "<h1 style='text-align:center; font-size:90px;'>🔥</h1>",
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        "<h1 style='text-align:center; color:#FFD700;'>주식주신 PRO</h1>",
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        "<p style='text-align:center; color:gray;'>"
+        "실시간 데이터 기반 AI 주식 분석"
+        "</p>",
+        unsafe_allow_html=True
+    )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    c1, c2, c3 = st.columns([1,2,1])
+
+    with c2:
+        if st.button("📊 분석 시작", use_container_width=True):
+            st.session_state.page = "analysis"
             st.rerun()
 
 # ==========================================
-# 2. 주식 분석 메인 화면 (Analysis Screen)
+# 7. 분석 화면
 # ==========================================
-elif st.session_state.page == 'analysis':
-    col_home, col_title = st.columns()
-    with col_home:
+elif st.session_state.page == "analysis":
+
+    col1, col2 = st.columns([1,5])
+
+    with col1:
         if st.button("🏠 홈"):
-            st.session_state.page = 'intro'
+            st.session_state.page = "intro"
             st.rerun()
-    with col_title:
-        st.markdown("<h2 style='color: #FFD700; margin-top: -5px;'>주식주신PRO 분석실</h2>", unsafe_allow_html=True)
-        
+
+    with col2:
+        st.markdown(
+            "<h2 style='color:#FFD700;'>주식주신PRO 분석실</h2>",
+            unsafe_allow_html=True
+        )
+
     st.write("---")
 
-    search_input = st.text_input("🔍 6자리 주식 종목코드를 입력하세요", placeholder="예: 005930 (삼성전자), 035720 (카카오)")
+    search_input = st.text_input(
+        "🔍 종목명 또는 종목코드 입력",
+        placeholder="예: 삼성전자 또는 005930"
+    )
 
-    if search_input:
-        with st.spinner("네이버 금융 실시간 데이터 수신 및 주신 연산 중..."):
-            res = fetch_naver_stock(search_input)
-        
-        if "error" in res:
-            st.error(res["error"])
-        else:
-            st.markdown(f"### 📈 종목코드 [{search_input}] 실시간 분석 결과")
-            
-            price_col, position_col = st.columns()
-            with price_col:
-                st.metric(label="현재 주식 가격", value=res["current_price"], delta=res["delta_text"])
-                
-            with position_col:
-                st.write("") 
-                st.markdown(
-                    f"<div style='background-color: {res['pos_color']}33; border: 2px solid {res['pos_color']}; "
-                    f"border-radius: 10px; padding: 15px; text-align: center;'> "
-                    f"<h3 style='color: {res['pos_color']}; margin: 0;'>{res['position']}</h3>"
-                    f"</div>", 
-                    unsafe_allow_html=True
-                )
-                
-            st.write("")
+    analyze_button = st.button("🚀 실시간 분석")
 
-            st.markdown("#### 📊 주식주신 핵심 분석 지표")
-            
-            analysis_data = {
-                "분석 항목 (A)": ["오늘 최고가", "오늘 거래량", "세력 개입 여부 (%)", "오늘 추천 매수가", "단타 가능성 (%)"],
-                "실시간 결과 (A)": [res["high_price"], res["today_volume"], res["power_score"], res["target_buy"], res["short_possibility"]],
-                "분석 항목 (B)": ["오늘 최저가", "전일 대비 거래량", "상승 가능성 (%)", "오늘 추천 매도가", "장기 보유 매력도 (%)"],
-                "실시간 결과 (B)": [res["low_price"], res["vol_change"], res["up_score"], res["target_sell"], res["long_possibility"]]
-            }
-            df = pd.DataFrame(analysis_data)
-            st.table(df.set_index("분석 항목 (A)"))
-            
-            st.write("")
+    # ==========================================
+    # 분석 실행
+    # ==========================================
+    if analyze_button and search_input:
 
-            st.markdown("#### 💡 오늘의 AI 조언")
-            st.info(res["ai_advice"])
-            
-            st.write("")
-            
-            st.markdown("#### 📰 실시간 관련 뉴스")
-            st.markdown(f"1. **[특징주]** `{search_input}`, 실시간 거래량 변동률 {res['vol_change']} 기록하며 투자자 이목 집중")
-            st.markdown(f"2. **[마켓포커스]** 주식주신 시스템이 포착한 `{search_input}` 당일 최고가 {res['high_price']} 돌파 여부 시나리오")
-            st.markdown(f"3. **[공시]** `{search_input}` 거래대금 급증에 따른 장중 변동성 완화 장치(VI) 발동 가능성 체크")
+        # 종목명 → 코드 변환
+        stock_code = STOCK_MAP.get(
+            search_input,
+            search_input
+        )
+
+        # 코드 검증
+        if len(stock_code) != 6:
+            st.error("올바른 종목코드를 입력하세요.")
+            st.stop()
+
+        # 데이터 가져오기
+        try:
+            with st.spinner("실시간 데이터를 불러오는 중입니다..."):
+                df = get_stock_data(stock_code)
+
+            if df is None:
+                st.error("데이터를 불러오지 못했습니다.")
+                st.stop()
+
+            result = calculate_signal(df)
+
+        except Exception:
+            st.error("실시간 데이터 처리 중 오류가 발생했습니다.")
+            st.stop()
+
+        # ==========================================
+        # 상단 정보
+        # ==========================================
+        st.markdown(
+            f"### 📈 [{stock_code}] 실시간 분석 결과"
+        )
+
+        price_col, position_col = st.columns([2,1])
+
+        with price_col:
+
+            delta_text = (
+                f"{result['change']:,} "
+                f"({result['change_percent']}%)"
+            )
+
+            st.metric(
+                label="현재 주가",
+                value=f"{result['current_price']:,} 원",
+                delta=delta_text
+            )
+
+        with position_col:
+
+            st.markdown(
+                f"""
+                <div style="
+                    background-color:{result['pos_color']}33;
+                    border:2px solid {result['pos_color']};
+                    border-radius:15px;
+                    padding:15px;
+                    text-align:center;
+                    margin-top:10px;
+                ">
+                    <h3 style="
+                        color:{result['pos_color']};
+                        margin:0;
+                    ">
+                        {result['position']}
+                    </h3>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        st.write("")
+
+        # ==========================================
+        # 핵심 분석 지표
+        # ==========================================
+        st.markdown("#### 📊 핵심 분석 지표")
+
+        analysis_data = {
+            "분석 항목": [
+                "오늘 최고가",
+                "오늘 최저가",
+                "거래량",
+                "거래량 집중도",
+                "상승 가능성"
+            ],
+            "실시간 결과": [
+                f"{result['high_price']:,} 원",
+                f"{result['low_price']:,} 원",
+                f"{result['volume']:,} 주",
+                f"{result['volume_score']} %",
+                f"{result['up_score']} %"
+            ]
+        }
+
+        table_df = pd.DataFrame(analysis_data)
+
+        st.dataframe(
+            table_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.write("")
+
+        # ==========================================
+        # 차트
+        # ==========================================
+        st.markdown("#### 📉 최근 주가 흐름")
+
+        chart_df = df[["Close"]].rename(
+            columns={"Close":"종가"}
+        )
+
+        st.line_chart(chart_df)
+
+        st.write("")
+
+        # ==========================================
+        # AI 코멘트
+        # ==========================================
+        st.markdown("#### 💡 AI 분석 코멘트")
+
+        st.info(result["ai_advice"])
+
+        st.write("")
+
+        # ==========================================
+        # 뉴스 섹션
+        # ==========================================
+        st.markdown("#### 📰 시장 체크 포인트")
+
+        st.markdown(
+            f"• [{stock_code}] 최근 거래량 변동성 확대 여부 확인"
+        )
+
+        st.markdown(
+            f"• 단기 지지선: {result['low_price']:,} 원"
+        )
+
+        st.markdown(
+            f"• 단기 저항선: {result['high_price']:,} 원"
+        )
