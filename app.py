@@ -39,7 +39,7 @@ if "page" not in st.session_state:
     st.session_state.page = "intro"
 
 # ==========================================
-# 3. 종목 데이터
+# 3. 종목 매핑
 # ==========================================
 STOCK_MAP = {
     "삼성전자": "005930",
@@ -53,22 +53,26 @@ STOCK_MAP = {
 }
 
 # ==========================================
-# 4. 종목 코드 변환 함수 (핵심)
+# 4. 종목 코드 변환 (한글 검색 해결)
 # ==========================================
 def resolve_stock_code(user_input):
 
-    user_input = user_input.strip()
+    if not user_input:
+        return None
 
-    if user_input.isdigit() and len(user_input) == 6:
-        return user_input
+    clean = str(user_input).strip().replace(" ", "")
 
-    if user_input in STOCK_MAP:
-        return STOCK_MAP[user_input]
+    if clean.isdigit() and len(clean) == 6:
+        return clean
+
+    for name, code in STOCK_MAP.items():
+        if name.replace(" ", "") == clean:
+            return code
 
     return None
 
 # ==========================================
-# 5. 데이터 로딩
+# 5. 데이터
 # ==========================================
 @st.cache_data(ttl=60)
 def get_stock_data(code):
@@ -102,7 +106,29 @@ def analyze(df):
     price_pos = (current - low) / max(high - low, 1) * 100
     up_score = min(max(int(price_pos * 0.7 + change_pct * 5), 5), 98)
 
+    # ==========================================
+    # 거래 집중도 해석
+    # ==========================================
+    if vol_score >= 80:
+        vol_state = "🔥 과열 (거래 폭발)"
+    elif vol_score >= 50:
+        vol_state = "👍 활발 (정상 이상)"
+    else:
+        vol_state = "😴 한산 (관심 저조)"
+
+    # ==========================================
+    # 상승 가능성 해석
+    # ==========================================
+    if up_score >= 75:
+        up_state = "🚀 강한 상승 흐름"
+    elif up_score >= 50:
+        up_state = "📈 상승 가능성 있음"
+    else:
+        up_state = "⚠ 약세 / 불확실"
+
+    # ==========================================
     # 포지션
+    # ==========================================
     if up_score >= 70:
         position = "🔥 상승 우세"
         color = "#FF4B4B"
@@ -113,13 +139,15 @@ def analyze(df):
         position = "👀 관망"
         color = "#FFA500"
 
+    # ==========================================
     # AI 코멘트
-    if "상승" in position:
+    # ==========================================
+    if up_score >= 70:
         ai = "거래량 증가 + 상승 흐름 유지. 눌림 매수 전략 유효."
-    elif "약세" in position:
+    elif up_score <= 35:
         ai = "하락 압력 존재. 신규 진입은 보수적으로."
     else:
-        ai = "횡보 구간. 거래량 변화 확인 필요."
+        ai = "횡보 구간. 방향성 확인 필요."
 
     return {
         "current": current,
@@ -129,7 +157,9 @@ def analyze(df):
         "low": low,
         "volume": volume,
         "vol_score": vol_score,
+        "vol_state": vol_state,
         "up_score": up_score,
+        "up_state": up_state,
         "position": position,
         "color": color,
         "ai": ai,
@@ -164,9 +194,6 @@ else:
 
     if btn and user_input:
 
-        # ==============================
-        # 코드 변환 (한글 검색 지원)
-        # ==============================
         code = resolve_stock_code(user_input)
 
         if code is None:
@@ -181,42 +208,46 @@ else:
 
         result = analyze(df)
 
-        # ==============================
-        # 현재가
-        # ==============================
-        st.metric(
-            "현재가",
-            f"{result['current']:,}원",
-            f"{result['change']:,} ({result['change_pct']}%)"
-        )
+        # ==========================================
+        # 현재가 + 포지션 (같은 줄)
+        # ==========================================
+        col1, col2 = st.columns([2, 1])
 
-        st.markdown(
-            f"<div style='color:{result['color']}; font-size:20px;'>"
-            f"{result['position']}</div>",
-            unsafe_allow_html=True
-        )
+        with col1:
+            st.metric(
+                "현재가",
+                f"{result['current']:,}원",
+                f"{result['change']:,} ({result['change_pct']}%)"
+            )
+
+        with col2:
+            st.markdown(
+                f"<div style='color:{result['color']}; font-size:18px; font-weight:bold; margin-top:30px;'>"
+                f"{result['position']}</div>",
+                unsafe_allow_html=True
+            )
 
         st.write("")
 
-        # ==============================
-        # 핵심 지표
-        # ==============================
+        # ==========================================
+        # 핵심 분석 지표
+        # ==========================================
         st.subheader("📊 핵심 분석 지표")
 
         st.dataframe(pd.DataFrame({
-            "항목": ["고가", "저가", "거래량", "거래 집중도", "상승 점수"],
+            "항목": ["고가", "저가", "거래량", "거래 집중도", "상승 가능성"],
             "값": [
                 f"{result['high']:,}",
                 f"{result['low']:,}",
                 f"{result['volume']:,}",
-                f"{result['vol_score']}%",
-                f"{result['up_score']}%"
+                f"{result['vol_score']}% ({result['vol_state']})",
+                f"{result['up_score']}% ({result['up_state']})"
             ]
         }), hide_index=True)
 
-        # ==============================
-        # 시장 체크 포인트 (핵심지표 아래)
-        # ==============================
+        # ==========================================
+        # 시장 체크 포인트
+        # ==========================================
         st.subheader("🎯 시장 체크 포인트")
 
         st.write(f"• 추천 매수가: {result['buy']:,}원")
@@ -226,9 +257,9 @@ else:
 
         st.write("")
 
-        # ==============================
+        # ==========================================
         # 최근 5일 차트
-        # ==============================
+        # ==========================================
         st.subheader("📈 최근 5일 주가 흐름")
 
         recent = df.tail(5).copy()
@@ -241,18 +272,32 @@ else:
 
         st.caption("최근 5거래일 기준")
 
-        # ==============================
-        # AI 코멘트
-        # ==============================
-        st.subheader("💡 AI 분석 코멘트")
+        # ==========================================
+        # 거래 집중도 카드
+        # ==========================================
+        st.markdown("### 📊 거래 집중도")
+        st.write(f"현재: **{result['vol_score']}%**")
+        st.write(result["vol_state"])
+        st.progress(result["vol_score"] / 100)
 
+        # ==========================================
+        # 상승 가능성 카드
+        # ==========================================
+        st.markdown("### 📈 상승 가능성")
+        st.write(f"현재: **{result['up_score']}%**")
+        st.write(result["up_state"])
+        st.progress(result["up_score"] / 100)
+
+        # ==========================================
+        # AI 코멘트
+        # ==========================================
+        st.subheader("💡 AI 분석 코멘트")
         st.info(result["ai"])
 
-        # ==============================
-        # 뉴스 (AI 밑)
-        # ==============================
+        # ==========================================
+        # 뉴스
+        # ==========================================
         st.subheader("📰 시장 뉴스")
-
-        st.write(f"• [{code}] 거래량 및 변동성 체크 필요")
-        st.write("• 기관/외국인 수급 흐름 확인")
+        st.write(f"• [{code}] 거래량 및 변동성 체크")
+        st.write("• 기관/외국인 수급 흐름 확인 필요")
         st.write("• 최근 5일 추세 기반 방향성 분석")
