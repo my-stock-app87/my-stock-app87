@@ -1,7 +1,6 @@
 import pandas as pd
 from collectors.kr_collector import collect_korean_market_data
 
-
 # =========================
 # 1. 점수 계산 엔진
 # =========================
