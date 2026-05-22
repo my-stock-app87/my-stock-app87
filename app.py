@@ -3,7 +3,6 @@ import pandas as pd
 import FinanceDataReader as fdr
 import datetime
 import requests
-import json
 from bs4 import BeautifulSoup
 
 # ==========================================
@@ -24,79 +23,78 @@ st.markdown("""
     background: linear-gradient(to bottom, #0F172A, #111827);
     color: white;
 }
-
 .stButton>button {
     background-color: #FF4B4B;
     color: white;
     border-radius: 10px;
     height: 45px;
     font-weight: bold;
+    width: 100%;
+}
+.news-box {
+    background-color: #1E293B;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+}
+.news-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #F8FAFC;
+    text-decoration: none;
+}
+.news-info {
+    font-size: 12px;
+    color: #94A3B8;
+    margin-top: 5px;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 세션
+# 2. 세션 및 상태 관리
 # ==========================================
 if "page" not in st.session_state:
     st.session_state.page = "intro"
+if "selected_code" not in st.session_state:
+    st.session_state.selected_code = None
+if "selected_name" not in st.session_state:
+    st.session_state.selected_name = ""
 
 # ==========================================
-# 3. 종목 데이터 (기본 고정 맵)
+# 3. 전종목 마스터 데이터 로딩 (한글 검색용 핵심 추가)
 # ==========================================
-STOCK_MAP = {
-    "삼성전자": "005930",
-    "카카오": "035720",
-    "네이버": "035420",
-    "sk하이닉스": "000660",
-    "LG에너지솔루션": "373220",
-    "현대차": "005380",
-    "기아": "000270",
-    "삼성바이오로직스": "207940"
-}
-
-# ==========================================
-# 4. 종목 코드 및 실제 이름 변환 함수 (수정 반영)
-# ==========================================
-def resolve_stock_code_and_name(user_input):
-    user_input = user_input.strip()
-
-    # 1. 사용자가 이미 6자리 숫자를 입력한 경우 (네이버 검색을 통해 실제 종목명 조회)
-    if user_input.isdigit() and len(user_input) == 6:
-        try:
-            url = f"https://naver.com{user_input}&q_enc=utf-8&st=111&frm=stock&r_format=json"
-            res = requests.get(url, timeout=5)
-            if res.status_code == 200:
-                data = res.json()
-                items = data.get("items", [[]])[0]
-                if items:
-                    # 네이버 반환 구조: [[["종목명", "코드", "초성", ...]]]
-                    return items[0][0][0], user_input
-        except Exception:
-            pass
-        return user_input, user_input
-
-    # 2. 고정 맵(STOCK_MAP)에 등록되어 있는 이름인 경우 우선 처리
-    if user_input in STOCK_MAP:
-        return user_input, STOCK_MAP[user_input]
-
-    # 3. [핵심] 네이버 금융 검색 API 연동 (에러 완벽 방지 및 실시간 매칭)
+@st.cache_data(ttl=86400) # 하루 동안 캐싱
+def load_all_krx_stocks():
     try:
-        url = f"https://naver.com{user_input}&q_enc=utf-8&st=111&frm=stock&r_format=json"
-        res = requests.get(url, timeout=5)
-        
-        if res.status_code == 200:
-            data = res.json()
-            items = data.get("items", [[]])[0]  # 검색결과 리스트 추출
-            
-            if items:
-                # 검색어와 가장 연관성 높은 첫 번째 항목의 실제 이름과 코드 매칭
-                actual_name = items[0][0][0]
-                stock_code = items[0][1][0]
-                return actual_name, stock_code
-    except Exception:
-        pass
+        # KRX 전체 상장 종목 리스트 가져오기 (코스피, 코스닥, 코넥스 포함)
+        df_krx = fdr.StockListing('KRX')
+        # 필요한 컬럼(종목코드, 종목명)만 추출하여 딕셔너리로 변환
+        # 검색 효율을 위해 종목명 양끝 공백을 제거하고 대문자로 변환하여 저장
+        stock_dict = {str(row['Name']).strip().upper(): str(row['Code']) for _, row in df_krx.iterrows()}
+        return stock_dict
+    except Exception as e:
+        st.error(f"종목 마스터 데이터를 불러오는 데 실패했습니다: {e}")
+        return {}
 
+# 앱 시작 시 마스터 데이터 로드
+KRX_STOCKS = load_all_krx_stocks()
+
+# ==========================================
+# 4. 종목 코드 변환 함수 (전체 종목 대응하도록 수정)
+# ==========================================
+def resolve_stock_code(user_input):
+    user_input = user_input.strip()
+    
+    # 1. 사용자가 이미 6자리 숫자를 입력한 경우
+    if user_input.isdigit() and len(user_input) == 6:
+        return user_input, None
+    
+    # 2. 한글/영문 종목명을 입력한 경우 (대소문자 구분 없음)
+    search_name = user_input.upper()
+    if search_name in KRX_STOCKS:
+        return KRX_STOCKS[search_name], user_input
+    
     return None, None
 
 # ==========================================
@@ -109,7 +107,7 @@ def get_stock_data(code):
     try:
         df = fdr.DataReader(code, start, end)
         return df if not df.empty else None
-    except Exception:
+    except:
         return None
 
 # ==========================================
@@ -119,97 +117,95 @@ def get_stock_data(code):
 def get_realtime_news(code):
     try:
         url = f"https://naver.com{code}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
-        }
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         res = requests.get(url, headers=headers)
-        res.raise_for_status()
-        
         soup = BeautifulSoup(res.text, "html.parser")
-        titles = soup.select(".title a")
-        sources = soup.select(".info")
-        dates = soup.select(".date")
         
         news_list = []
+        titles = soup.select(".title a")
+        info_sources = soup.select(".info")
+        info_dates = soup.select(".date")
+        
         for i in range(min(5, len(titles))):
             title_text = titles[i].get_text(strip=True)
-            link = "https://finance.naver.com" + titles[i]["href"]
-            source_text = sources[i].get_text(strip=True) if i < len(sources) else "알 수 없음"
-            date_text = dates[i].get_text(strip=True) if i < len(dates) else ""
+            link = titles[i]['href']
+            if link.startswith('/'):
+                link = "https://naver.com" + link
+                
+            source = info_sources[i].get_text(strip=True) if i < len(info_sources) else "언론사"
+            date = info_dates[i].get_text(strip=True) if i < len(info_dates) else ""
             
             news_list.append({
                 "title": title_text,
                 "link": link,
-                "source": source_text,
-                "date": date_text
+                "source": source,
+                "date": date
             })
         return news_list
-    except Exception:
+    except Exception as e:
         return []
 
 # ==========================================
-# 7. 페이지 전환 함수
+# 7. 페이지 랜더링 로직
 # ==========================================
-def move_page(page_name):
-    st.session_state.page = page_name
-    st.rerun()
 
-# ==========================================
-# 8. 인트로 페이지 (intro)
-# ==========================================
+# --- 인트로 페이지 ---
 if st.session_state.page == "intro":
     st.title("🔥 주식주신 PRO")
-    st.subheader("스마트한 실시간 주가 조회의 시작")
-    st.write("종목명 또는 6자리 종목코드를 입력하여 실시간 차트와 최신 뉴스를 확인하세요.")
+    st.subheader("대한민국 모든 상장 종목을 한글로 검색하세요.")
     
-    user_input = st.text_input("종목 입력 (예: 삼성전자, 현대차, 000660)", key="stock_search_input")
+    user_search = st.text_input("검색어 입력 (예: 삼성전자, 에코프로, 카카오뱅크, 005930)", placeholder="종목명 또는 코드를 입력하세요...")
+    search_btn = st.button("주가 분석 및 뉴스 보기")
     
-    if st.button("주가 조회하기"):
-        if user_input:
-            name, code = resolve_stock_code_and_name(user_input)
-            if code and name:
-                st.session_state.selected_code = code
-                st.session_state.selected_name = name  # 추출한 '실제 주식이름' 저장
-                move_page("main")
-            else:
-                st.error("올바른 종목명 또는 종목코드를 입력해 주세요.")
+    if search_btn and user_search:
+        code, matched_name = resolve_stock_code(user_search)
+        if code:
+            # 코드로 검색했을 경우 역으로 종목명을 찾아옴
+            if not matched_name:
+                matched_name = next((k for k, v in KRX_STOCKS.items() if v == code), code)
+            
+            st.session_state.selected_code = code
+            st.session_state.selected_name = matched_name
+            st.session_state.page = "dashboard"
+            st.rerun()
         else:
-            st.warning("검색어를 입력해 주세요.")
+            st.error("존재하지 않는 종목명이거나 잘못된 코드입니다. 대소문자 및 띄어쓰기를 확인해 주세요.")
 
-# ==========================================
-# 9. 메인 대시보드 페이지 (main)
-# ==========================================
-elif st.session_state.page == "main":
-    code = st.session_state.get("selected_code")
-    name = st.session_state.get("selected_name")
+# --- 대시보드 페이지 ---
+elif st.session_state.page == "dashboard":
+    code = st.session_state.selected_code
+    name = st.session_state.selected_name
     
-    # 수정 핵심: 번호로 검색해도 정확한 이름과 함께 타이틀 출력
-    st.title(f"📈 {name} ({code}) 분석 리포트")
-    
-    if st.button("🏠 홈으로 돌아가기"):
-        move_page("intro")
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.title(f"📊 {name} ({code})")
+    with col2:
+        if st.button("처음으로"):
+            st.session_state.page = "intro"
+            st.rerun()
+            
+    # 주가 데이터 로드 및 차트 출력
+    with st.spinner("주가 데이터를 가져오는 중..."):
+        df = get_stock_data(code)
         
-    # 데이터 로드
-    df = get_stock_data(code)
-    
-    if df is not None:
-        st.subheader("📊 최근 30일 주가 추이")
-        st.line_chart(df["Close"])
-        
-        with st.expander("전체 데이터 보기"):
-            st.dataframe(df.tail(10))
+    if df is not None and not df.empty:
+        st.subheader("📈 최근 30일 주가 추이")
+        st.line_chart(df['Close'])
     else:
-        st.warning("주가 데이터를 불러오지 못했습니다.")
+        st.warning("주가 데이터를 가져오지 못했습니다. (거래정지 종목이거나 코드 오류일 수 있습니다.)")
         
-    # 뉴스 로드
-    st.markdown("---")
-    st.subheader("📰 최신 관련 뉴스")
-    news_data = get_realtime_news(code)
-    
-    if news_data:
-        for news in news_data:
-            st.markdown(f"**[{news['title']}]({news['link']})**")
-            st.caption(f"{news['source']} | {news['date']}")
-            st.write("")
+    # 실시간 뉴스 로드 및 출력
+    st.subheader("📰 실시간 주요 뉴스")
+    with st.spinner("최신 뉴스를 긁어오는 중..."):
+        news_items = get_realtime_news(code)
+        
+    if news_items:
+        for item in news_items:
+            st.markdown(f"""
+            <div class="news-box">
+                <a href="{item['link']}" target="_blank" class="news-title">{item['title']}</a>
+                <div class="news-info">{item['source']} | {item['date']}</div>
+            </div>
+            """, unsafe_allow_html=True)
     else:
-        st.write("가져올 수 있는 최신 뉴스가 없습니다.")
+        st.info("관련 뉴스를 찾을 수 없거나 불러오는데 실패했습니다.")
