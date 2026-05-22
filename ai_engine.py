@@ -1,5 +1,5 @@
 import pandas as pd
-from app.collectors.kr_collector import collect_korean_market_data
+from collectors.kr_collector import collect_korean_market_data
 
 
 # =========================
