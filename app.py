@@ -2,7 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import requests
 
 # 페이지 넓게 쓰기 설정
 st.set_page_config(layout="wide")
@@ -10,21 +9,19 @@ st.set_page_config(layout="wide")
 # =========================
 # [한국 주식] 이름/코드 통합 검색 시스템
 # =========================
-@st.cache_data(ttl=86400)  # 하루에 한 번만 KRX에서 종목 정보 동기화 (속도 최적화)
+@st.cache_data(ttl=86400)  # 하루에 한 번만 KRX에서 종목 정보 동기화
 def load_krx_tickers():
     try:
-        # KRX 정보를 관리하는 네이버 금융 데이터 수집
-        url = 'https://naver.com'
-        # 일반 주식 정보를 가장 확실하게 가져오기 위해 상장법인목록 엑셀 가공용 데이터 활용
+        # 상장법인목록 데이터를 가공하여 활용
         df_kospi = pd.read_html('https://krx.co.kr', header=0)[0]
         df_kospi = df_kospi[['회사명', '종목코드']].copy()
         df_kospi['종목코드'] = df_kospi['종목코드'].astype(str).str.zfill(6)
         
         # 딕셔너리 형태로 변환 (키: 회사명, 값: 종목코드)
-        ticker_dict = pd.series(df_kospi.종목코드.values, index=df_kospi.회사명).to_dict()
+        ticker_dict = pd.Series(df_kospi.종목코드.values, index=df_kospi.회사명).to_dict()
         return ticker_dict
     except:
-        # 만약 KRX 서버가 막혔을 때를 대비한 최소한의 우량주 비상용 리스트
+        # 비상용 기본 우량주 리스트
         return {"삼성전자": "005930", "SK하이닉스": "000660", "현대차": "005380", "네이버": "035420", "카카오": "035720"}
 
 def search_korean_code(query, ticker_dict):
@@ -35,19 +32,16 @@ def search_korean_code(query, ticker_dict):
     # Case 1: 숫자로만 된 코드를 입력했을 때 (예: 005930)
     if query.isdigit():
         code = query.zfill(6)
-        # 딕셔너리에서 코드를 역추적해서 회사명 찾기
         name = next((k for k, v in ticker_dict.items() if v == code), "알 수 없는 종목")
         return code, name
         
-    # Case 2: 한글/영문 종목명을 입력했을 때 (예: 삼성전자, 삼성, AAPL)
-    # 글자가 정확히 일치하는지 먼저 확인
+    # Case 2: 한글/영문 종목명을 입력했을 때 정확히 일치하는지 확인
     if query in ticker_dict:
         return ticker_dict[query], query
         
-    # 포함하는 글자가 있는지 부분 검색 (예: '삼성'만 쳤을 때 '삼성전자' 매칭)
+    # 포함하는 글자가 있는지 부분 검색 (예: '삼성' -> '삼성전자')
     matched_names = [k for k in ticker_dict.keys() if query.lower() in k.lower()]
     if matched_names:
-        # 가장 유사한 첫 번째 종목 연동
         best_match = matched_names[0]
         return ticker_dict[best_match], best_match
         
@@ -95,7 +89,6 @@ def load_global_markets():
 # =========================
 def load_korean_data(final_code):
     try:
-        # 야후 파이낸스 형식으로 변환 (.KS 접미사 테스트)
         if final_code.isdigit() and len(final_code) == 6:
             full_code = f"{final_code}.KS"
         else:
@@ -103,12 +96,10 @@ def load_korean_data(final_code):
 
         df = yf.download(full_code, period="6mo", interval="1d", auto_adjust=True)
 
-        # .KS로 실패 시 .KQ(코스닥)로 스위칭 재시도
         if (df is None or df.empty) and f"{final_code}.KS" == full_code:
             full_code = f"{final_code}.KQ"
             df = yf.download(full_code, period="6mo", interval="1d", auto_adjust=True)
 
-        # 만약 해외 주식이거나 접미사 없는 구조인 경우 그대로 재시도
         if df is None or df.empty:
             full_code = final_code
             df = yf.download(full_code, period="6mo", interval="1d", auto_adjust=True)
@@ -239,7 +230,6 @@ st.markdown("---")
 st.subheader("🇰🇷 한국 주식 통합 검색 및 AI 분석")
 krx_dict = load_krx_tickers()
 
-# 텍스트 입력창 가이드라인 변경
 search_input = st.text_input("종목명 또는 종목코드 6자리를 입력하세요 (예: 삼성전자 / 현대차 / 000660)")
 
 if st.button("분석하기"):
@@ -247,7 +237,6 @@ if st.button("분석하기"):
         st.warning("검색어를 입력해 주세요.")
     else:
         with st.spinner("KRX 매핑 테이블 대조 및 주가 수집 중..."):
-            # 입력한 검색어에서 실제 종목코드가 무엇인지 추출
             target_code, target_name = search_korean_code(search_input, krx_dict)
             
             if not target_code:
@@ -271,6 +260,12 @@ if st.button("분석하기"):
                         
                         with res_col2:
                             st.write("### 🤖 AI 최종 진단 결과")
+                            
+                            # 통화 단위 예외 처리
+                            currency_unit = "원" if ".K" in str(result['티ker']) or str(result['티커']).isdigit() else "\$"
+                            price_val = f"{int(result['현재가']):,}원" if currency_unit == "원" else f"\${result['현재가']:.2f}"
+                            
+                            # ⚠️ 괄호 누락 오류를 수정한 레이아웃 코드 영역
                             st.markdown(
-                                f"<div style='padding:20px; border-radius:10px; background-color:#f0f2f6; text-align:center;'>",
-                                unsafe_allow_html=True
+                                f"""
+                                <div style='padding:20px; border-radius:10px; background-color:#f0f2f6; text-align:center;'>
