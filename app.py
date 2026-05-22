@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
-import datetime
 
 # ==========================================
 # 0. 기본 설정
@@ -19,7 +18,7 @@ if "page" not in st.session_state:
     st.session_state.page = "main"
 
 # ==========================================
-# 2. 한글 → 티커 매핑
+# 2. 한글 종목 매핑
 # ==========================================
 STOCK_MAP = {
     "삼성전자": "005930.KS",
@@ -31,17 +30,39 @@ STOCK_MAP = {
 }
 
 # ==========================================
-# 3. 데이터 가져오기 (안정형)
+# 3. 데이터 로딩
 # ==========================================
 @st.cache_data(ttl=60)
 def get_data(ticker):
     df = yf.download(ticker, period="10d", interval="1d")
+    df = df.dropna()
     return df
 
 # ==========================================
-# 4. 분석 로직
+# 4. 한글 검색 해결 함수
+# ==========================================
+def resolve_stock(user):
+    user = user.strip().replace(" ", "")
+
+    if user in STOCK_MAP:
+        return STOCK_MAP[user], user
+
+    for k in STOCK_MAP:
+        if k in user:
+            return STOCK_MAP[k], k
+
+    if user.isdigit() and len(user) == 6:
+        return user + ".KS", user
+
+    return None, None
+
+# ==========================================
+# 5. 분석 로직 (전체 데이터 유지)
 # ==========================================
 def analyze(df):
+
+    if df is None or df.empty or len(df) < 2:
+        return None
 
     latest = df.iloc[-1]
     prev = df.iloc[-2]
@@ -49,34 +70,24 @@ def analyze(df):
     close = int(latest["Close"])
     prev_close = int(prev["Close"])
 
-    high = int(latest["High"])
-    low = int(latest["Low"])
+    high = int(df["High"].max())
+    low = int(df["Low"].min())
     volume = int(latest["Volume"])
 
     change = close - prev_close
-    change_pct = round((change / prev_close) * 100, 2)
+    change_pct = round(change / prev_close * 100, 2)
 
     # 거래 집중도
     avg_vol = df["Volume"].mean()
     vol_score = min(max(int(volume / avg_vol * 50), 10), 95)
 
-    if vol_score >= 80:
-        vol_state = "🔥 과열"
-    elif vol_score >= 50:
-        vol_state = "👍 활발"
-    else:
-        vol_state = "😴 약함"
+    vol_state = "🔥 과열" if vol_score >= 80 else "👍 활발" if vol_score >= 50 else "😴 약함"
 
     # 상승 가능성
     price_pos = (close - low) / max(high - low, 1) * 100
     up_score = min(max(int(price_pos * 0.6 + change_pct * 5 + 40), 5), 98)
 
-    if up_score >= 75:
-        up_state = "🚀 강한 상승"
-    elif up_score >= 50:
-        up_state = "📈 상승 가능"
-    else:
-        up_state = "⚠ 약세"
+    up_state = "🚀 강한 상승" if up_score >= 75 else "📈 상승 가능" if up_score >= 50 else "⚠ 약세"
 
     # 포지션
     if up_score >= 70:
@@ -89,11 +100,12 @@ def analyze(df):
         position = "👀 관망"
         color = "#FFA500"
 
-    # AI 코멘트
     ai = f"""
-    거래 집중도: {vol_state}, 상승 가능성: {up_state} 기반 분석입니다.
-    단기 흐름은 {'상승 압력 우세' if up_score >= 70 else '중립 또는 조정 구간'}입니다.
-    """
+거래 집중도: {vol_state}
+상승 가능성: {up_state}
+
+현재 단기 흐름은 {"상승 압력" if up_score >= 70 else "중립/조정"} 구간입니다.
+"""
 
     return {
         "close": close,
@@ -101,7 +113,7 @@ def analyze(df):
         "change_pct": change_pct,
         "high": high,
         "low": low,
-        "volume": int(volume),
+        "volume": volume,
         "vol_score": vol_score,
         "vol_state": vol_state,
         "up_score": up_score,
@@ -112,32 +124,31 @@ def analyze(df):
     }
 
 # ==========================================
-# 5. UI
+# 6. UI
 # ==========================================
 st.title("🔥 주식주신 PRO")
 
-user = st.text_input("종목명 또는 코드 입력")
+user = st.text_input("종목명 또는 6자리 코드 입력")
 
 if user:
 
-    # 한글 처리
-    if user in STOCK_MAP:
-        ticker = STOCK_MAP[user]
-        name = user
-    elif user.endswith(".KS") or user.isdigit():
-        ticker = user
-        name = user
-    else:
-        st.error("지원 종목: 삼성전자, 카카오, 네이버 또는 6자리 코드")
+    ticker, name = resolve_stock(user)
+
+    if ticker is None:
+        st.error("삼성전자 / 카카오 / 네이버 / 6자리 코드만 가능")
         st.stop()
 
     df = get_data(ticker)
 
-    if df is None or df.empty:
-        st.error("데이터 없음")
+    if df is None or df.empty or len(df) < 2:
+        st.error("데이터 부족")
         st.stop()
 
     res = analyze(df)
+
+    if res is None:
+        st.error("분석 실패")
+        st.stop()
 
     # ==========================================
     # 현재가 + 포지션
@@ -159,13 +170,21 @@ if user:
         )
 
     # ==========================================
-    # 핵심 지표
+    # 📊 전체 데이터
     # ==========================================
-    st.subheader("📊 핵심 분석")
+    st.subheader("📊 전체 분석 데이터")
 
     st.dataframe(pd.DataFrame({
-        "항목": ["고가", "저가", "거래량", "거래 집중도", "상승 가능성"],
+        "항목": [
+            "현재가",
+            "고가",
+            "저가",
+            "거래량",
+            "거래 집중도",
+            "상승 가능성"
+        ],
         "값": [
+            f"{res['close']:,}",
             f"{res['high']:,}",
             f"{res['low']:,}",
             f"{res['volume']:,}",
@@ -175,29 +194,27 @@ if user:
     }), hide_index=True)
 
     # ==========================================
-    # 5일 차트
+    # 📈 5일 차트
     # ==========================================
-    st.subheader("📈 최근 5일")
-
-    chart = df["Close"].tail(5)
-    st.line_chart(chart)
+    st.subheader("📈 최근 5일 흐름")
+    st.line_chart(df["Close"].tail(5))
 
     # ==========================================
-    # 거래 집중도
+    # 📊 거래 집중도
     # ==========================================
     st.subheader("📊 거래 집중도")
     st.progress(res["vol_score"] / 100)
     st.write(res["vol_state"])
 
     # ==========================================
-    # 상승 가능성
+    # 📈 상승 가능성
     # ==========================================
     st.subheader("📈 상승 가능성")
     st.progress(res["up_score"] / 100)
     st.write(res["up_state"])
 
     # ==========================================
-    # AI
+    # 💡 AI 분석
     # ==========================================
     st.subheader("💡 AI 분석")
     st.info(res["ai"])
