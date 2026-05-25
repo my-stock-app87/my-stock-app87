@@ -1,78 +1,50 @@
 import FinanceDataReader as fdr
 import pandas as pd
-from scanner.filters import is_valid_stock, price_zone
 
 
 # =========================
-# 종목 가져오기
+# 가격대 분류
 # =========================
-def get_stock_list():
+def price_zone(price):
 
-    try:
+    if price <= 10000:
+        return "1만원 이하"
 
-        krx = fdr.StockListing("KRX")
+    elif price <= 30000:
+        return "3만원 이하"
 
-        return krx[
-            ["Code", "Name"]
-        ].dropna()
-
-    except Exception:
-
-        return pd.DataFrame({
-
-            "Code": [
-                "005930",
-                "000660",
-                "035420",
-                "035720",
-                "005380",
-                "051910",
-                "006400",
-                "373220",
-                "207940",
-                "068270",
-                "051900",
-                "066570",
-                "005490",
-                "012330",
-                "028260",
-            ],
-
-            "Name": [
-                "삼성전자",
-                "SK하이닉스",
-                "NAVER",
-                "카카오",
-                "현대차",
-                "LG화학",
-                "삼성SDI",
-                "LG에너지솔루션",
-                "삼성바이오로직스",
-                "셀트리온",
-                "LG생활건강",
-                "LG전자",
-                "POSCO홀딩스",
-                "현대모비스",
-                "삼성물산",
-            ]
-        })
+    else:
+        return "5만원 이상"
 
 
 # =========================
 # 전체 시장 스캔
 # =========================
-def market_scan(sample_size=700):
+def market_scan(sample_size=300):
 
-    krx = get_stock_list()
+    try:
 
-    if krx.empty:
+        krx = fdr.StockListing("KRX")[
+
+            ["Code", "Name"]
+
+        ].dropna()
+
+    except Exception:
+
         return pd.DataFrame()
 
+    # =========================
+    # 랜덤 샘플
+    # =========================
     if len(krx) > sample_size:
 
         sample = krx.sample(
+
             sample_size,
+
             random_state=None
+
         )
 
     else:
@@ -81,6 +53,9 @@ def market_scan(sample_size=700):
 
     result = []
 
+    # =========================
+    # 종목 분석
+    # =========================
     for _, row in sample.iterrows():
 
         code = str(row["Code"])
@@ -90,18 +65,16 @@ def market_scan(sample_size=700):
 
             df = fdr.DataReader(code).tail(60)
 
-            if df.empty or len(df) < 25:
+            if df.empty:
                 continue
 
-            close = int(df["Close"].iloc[-1])
+            latest = df.iloc[-1]
+            prev = df.iloc[-2]
 
-            prev_close = int(
-                df["Close"].iloc[-2]
-            )
+            close = int(latest["Close"])
+            prev_close = int(prev["Close"])
 
-            volume = int(
-                df["Volume"].iloc[-1]
-            )
+            volume = int(latest["Volume"])
 
             avg_volume = (
                 df["Volume"]
@@ -109,77 +82,100 @@ def market_scan(sample_size=700):
                 .mean()
             )
 
-            if prev_close <= 0:
-                continue
-
-            if avg_volume <= 0:
-                continue
-
-            if not is_valid_stock(
-                name,
-                close,
-                avg_volume
-            ):
-                continue
-
+            # =========================
+            # 등락률
+            # =========================
             change_pct = (
+
                 (close - prev_close)
+
                 / prev_close
+
             ) * 100
 
+            # =========================
+            # 이동평균
+            # =========================
             ma5 = (
+
                 df["Close"]
+
                 .rolling(5)
+
                 .mean()
+
                 .iloc[-1]
+
             )
 
             ma20 = (
+
                 df["Close"]
+
                 .rolling(20)
+
                 .mean()
+
                 .iloc[-1]
+
             )
 
-            volume_ratio = (
-                volume / avg_volume
-            )
+            # =========================
+            # 거래량 배수
+            # =========================
+            if avg_volume > 0:
 
-            score = 0
+                volume_ratio = (
+                    volume / avg_volume
+                )
 
+            else:
+
+                volume_ratio = 1
+
+            # =========================
+            # AI 점수
+            # =========================
+            score = 50
+
+            # 거래량 증가
             if volume_ratio >= 3:
-                score += 30
+                score += 25
 
             elif volume_ratio >= 2:
-                score += 20
+                score += 15
 
-            elif volume_ratio >= 1.5:
+            elif volume_ratio >= 1.2:
                 score += 10
 
+            # 이평 돌파
             if close > ma5:
                 score += 10
 
             if close > ma20:
                 score += 10
 
+            # 급등 직전형
             if 0 <= change_pct <= 5:
-                score += 25
+                score += 20
 
             elif 5 <= change_pct <= 10:
-                score += 15
+                score += 10
 
+            # 너무 오른 종목 감점
             elif change_pct >= 20:
-                score -= 30
+                score -= 20
 
+            # 저가주 가점
             if close <= 5000:
                 score += 20
 
             elif close <= 10000:
                 score += 10
 
-            if volume >= 300000:
-                score += 10
-
+            # =========================
+            # 신호
+            # =========================
             signal = "관망"
 
             if volume_ratio >= 3:
@@ -208,6 +204,9 @@ def market_scan(sample_size=700):
 
                 signal = "눌림목"
 
+            # =========================
+            # 판단
+            # =========================
             action = "지켜본다"
 
             if score >= 90:
@@ -222,20 +221,24 @@ def market_scan(sample_size=700):
             elif score < 40:
                 action = "제외"
 
-            if signal == "거래량폭발" and change_pct >= 15:
-
-                action = "추격주의"
-
+            # =========================
+            # 추천 가격
+            # =========================
             buy_price = int(close * 0.97)
 
             sell_price = int(close * 1.05)
 
             stop_loss = int(close * 0.94)
 
+            # =========================
+            # 저장
+            # =========================
             result.append({
 
                 "종목코드": code,
+
                 "종목명": name,
+
                 "현재가": close,
 
                 "등락률(%)": round(
@@ -251,7 +254,9 @@ def market_scan(sample_size=700):
                 ),
 
                 "매수가": buy_price,
+
                 "매도가": sell_price,
+
                 "손절가": stop_loss,
 
                 "가격대": price_zone(close),
@@ -259,6 +264,7 @@ def market_scan(sample_size=700):
                 "AI점수": round(score, 2),
 
                 "신호": signal,
+
                 "판단": action
             })
 
@@ -270,9 +276,15 @@ def market_scan(sample_size=700):
     if result_df.empty:
         return pd.DataFrame()
 
+    # =========================
+    # 정렬
+    # =========================
     result_df = result_df.sort_values(
-        "AI점수",
+
+        ["AI점수", "거래량배수"],
+
         ascending=False
+
     )
 
     return result_df.reset_index(drop=True)
