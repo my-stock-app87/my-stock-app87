@@ -4,23 +4,78 @@ from scanner.filters import is_valid_stock, price_zone
 
 
 # =========================
-# KRX 전체 종목
+# KRX 종목 가져오기
 # =========================
 def get_stock_list():
 
-    krx = fdr.StockListing("KRX")
+    try:
 
-    krx = krx[
-        ["Code", "Name"]
-    ].dropna()
+        krx = fdr.StockListing("KRX")
 
-    return krx
+        krx = krx[
+            ["Code", "Name"]
+        ].dropna()
+
+        return krx
+
+    except Exception:
+
+        # KRX 실패 시 백업 종목
+
+        return pd.DataFrame({
+
+            "Code": [
+
+                "005930",
+                "000660",
+                "035420",
+                "035720",
+                "005380",
+                "051910",
+                "006400",
+                "373220",
+                "207940",
+                "068270",
+
+                "078130",
+                "049080",
+                "328130",
+                "338220",
+
+                "027580",
+                "900250",
+
+            ],
+
+            "Name": [
+
+                "삼성전자",
+                "SK하이닉스",
+                "NAVER",
+                "카카오",
+                "현대차",
+                "LG화학",
+                "삼성SDI",
+                "LG에너지솔루션",
+                "삼성바이오로직스",
+                "셀트리온",
+
+                "국일제지",
+                "기가레인",
+                "루닛",
+                "뷰노",
+
+                "상보",
+                "크리스탈신소재",
+
+            ]
+        })
 
 
 # =========================
 # 전체 시장 스캔
 # =========================
-def market_scan():
+def market_scan(sample_size=1000):
 
     krx = get_stock_list()
 
@@ -28,14 +83,23 @@ def market_scan():
         return pd.DataFrame()
 
     # =========================
-    # 전체시장 분석
+    # 랜덤 스캔
     # =========================
-    sample = krx
+    if len(krx) > sample_size:
+
+        sample = krx.sample(
+            sample_size,
+            random_state=None
+        )
+
+    else:
+
+        sample = krx
 
     result = []
 
     # =========================
-    # 전체 종목 루프
+    # 종목 분석
     # =========================
     for _, row in sample.iterrows():
 
@@ -160,9 +224,7 @@ def market_scan():
             if volume >= 300000:
                 score += 10
 
-            # =========================
-            # 테마 보정
-            # =========================
+            # 관심 테마 보정
             if any(word in name for word in [
 
                 "국일",
@@ -224,12 +286,8 @@ def market_scan():
             elif score < 40:
                 action = "제외"
 
-            # =========================
             # 위험 경고
-            # =========================
-            if signal in [
-                "거래량폭발"
-            ] and change_pct >= 15:
+            if signal == "거래량폭발" and change_pct >= 15:
 
                 action = "추격주의"
 
@@ -283,17 +341,11 @@ def market_scan():
         except Exception:
             continue
 
-    # =========================
-    # 데이터프레임
-    # =========================
     result_df = pd.DataFrame(result)
 
     if result_df.empty:
         return pd.DataFrame()
 
-    # =========================
-    # AI점수 정렬
-    # =========================
     result_df = result_df.sort_values(
         "AI점수",
         ascending=False
