@@ -18,12 +18,9 @@ def get_stock_list():
 
     except Exception:
 
-        # 서버 실패시 백업 종목
-
         return pd.DataFrame({
 
             "Code": [
-
                 "005930",
                 "000660",
                 "035420",
@@ -34,19 +31,14 @@ def get_stock_list():
                 "373220",
                 "207940",
                 "068270",
-
-                "078130",
-                "049080",
-                "328130",
-                "338220",
-
-                "027580",
-                "900250",
-
+                "051900",
+                "066570",
+                "005490",
+                "012330",
+                "028260",
             ],
 
             "Name": [
-
                 "삼성전자",
                 "SK하이닉스",
                 "NAVER",
@@ -57,15 +49,11 @@ def get_stock_list():
                 "LG에너지솔루션",
                 "삼성바이오로직스",
                 "셀트리온",
-
-                "국일제지",
-                "기가레인",
-                "루닛",
-                "뷰노",
-
-                "상보",
-                "크리스탈신소재",
-
+                "LG생활건강",
+                "LG전자",
+                "POSCO홀딩스",
+                "현대모비스",
+                "삼성물산",
             ]
         })
 
@@ -80,9 +68,6 @@ def market_scan(sample_size=1000):
     if krx.empty:
         return pd.DataFrame()
 
-    # =========================
-    # 랜덤 스캔
-    # =========================
     if len(krx) > sample_size:
 
         sample = krx.sample(
@@ -96,9 +81,6 @@ def market_scan(sample_size=1000):
 
     result = []
 
-    # =========================
-    # 종목 분석
-    # =========================
     for _, row in sample.iterrows():
 
         code = str(row["Code"])
@@ -108,10 +90,7 @@ def market_scan(sample_size=1000):
 
             df = fdr.DataReader(code).tail(60)
 
-            if df.empty:
-                continue
-
-            if len(df) < 25:
+            if df.empty or len(df) < 25:
                 continue
 
             close = int(df["Close"].iloc[-1])
@@ -136,9 +115,6 @@ def market_scan(sample_size=1000):
             if avg_volume <= 0:
                 continue
 
-            # =========================
-            # 기본 필터
-            # =========================
             if not is_valid_stock(
                 name,
                 close,
@@ -146,17 +122,11 @@ def market_scan(sample_size=1000):
             ):
                 continue
 
-            # =========================
-            # 등락률
-            # =========================
             change_pct = (
                 (close - prev_close)
                 / prev_close
             ) * 100
 
-            # =========================
-            # 이동평균선
-            # =========================
             ma5 = (
                 df["Close"]
                 .rolling(5)
@@ -171,19 +141,12 @@ def market_scan(sample_size=1000):
                 .iloc[-1]
             )
 
-            # =========================
-            # 거래량 배수
-            # =========================
             volume_ratio = (
                 volume / avg_volume
             )
 
-            # =========================
-            # AI 점수
-            # =========================
             score = 0
 
-            # 거래량 증가
             if volume_ratio >= 3:
                 score += 30
 
@@ -193,38 +156,30 @@ def market_scan(sample_size=1000):
             elif volume_ratio >= 1.5:
                 score += 10
 
-            # 추세
             if close > ma5:
                 score += 10
 
             if close > ma20:
                 score += 10
 
-            # 급등 직전형
             if 0 <= change_pct <= 5:
                 score += 25
 
             elif 5 <= change_pct <= 10:
                 score += 15
 
-            # 이미 너무 오른 종목 감점
             elif change_pct >= 20:
                 score -= 30
 
-            # 저가주 보정
             if close <= 5000:
                 score += 20
 
             elif close <= 10000:
                 score += 10
 
-            # 거래량 자체
             if volume >= 300000:
                 score += 10
 
-            # =========================
-            # 신호
-            # =========================
             signal = "관망"
 
             if volume_ratio >= 3:
@@ -253,9 +208,6 @@ def market_scan(sample_size=1000):
 
                 signal = "눌림목"
 
-            # =========================
-            # 판단
-            # =========================
             action = "지켜본다"
 
             if score >= 90:
@@ -270,29 +222,20 @@ def market_scan(sample_size=1000):
             elif score < 40:
                 action = "제외"
 
-            # 위험 경고
             if signal == "거래량폭발" and change_pct >= 15:
 
                 action = "추격주의"
 
-            # =========================
-            # 추천 가격
-            # =========================
             buy_price = int(close * 0.97)
 
             sell_price = int(close * 1.05)
 
             stop_loss = int(close * 0.94)
 
-            # =========================
-            # 결과 저장
-            # =========================
             result.append({
 
                 "종목코드": code,
-
                 "종목명": name,
-
                 "현재가": close,
 
                 "등락률(%)": round(
@@ -308,9 +251,7 @@ def market_scan(sample_size=1000):
                 ),
 
                 "매수가": buy_price,
-
                 "매도가": sell_price,
-
                 "손절가": stop_loss,
 
                 "가격대": price_zone(close),
@@ -318,7 +259,6 @@ def market_scan(sample_size=1000):
                 "AI점수": round(score, 2),
 
                 "신호": signal,
-
                 "판단": action
             })
 
