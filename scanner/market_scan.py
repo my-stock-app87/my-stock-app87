@@ -18,16 +18,16 @@ def price_zone(price):
 
 
 # =========================
-# 시장 스캔
+# 전체 시장 랜덤 스캔
 # =========================
-def market_scan(sample_size=500):
+def market_scan(sample_size=200):
 
     try:
 
-        krx = fdr.StockListing("KRX")[
+        krx = fdr.StockListing("KRX")
 
+        krx = krx[
             ["Code", "Name"]
-
         ].dropna()
 
     except Exception as e:
@@ -37,21 +37,15 @@ def market_scan(sample_size=500):
         return pd.DataFrame()
 
     # =========================
-    # 랜덤 샘플
+    # 랜덤 종목 추출
     # =========================
-    if len(krx) > sample_size:
+    sample = krx.sample(
 
-        sample = krx.sample(
+        min(sample_size, len(krx)),
 
-            sample_size,
+        random_state=None
 
-            random_state=None
-
-        )
-
-    else:
-
-        sample = krx
+    )
 
     result = []
 
@@ -70,6 +64,9 @@ def market_scan(sample_size=500):
             if df.empty:
                 continue
 
+            if len(df) < 20:
+                continue
+
             latest = df.iloc[-1]
             prev = df.iloc[-2]
 
@@ -83,6 +80,9 @@ def market_scan(sample_size=500):
                 .tail(20)
                 .mean()
             )
+
+            if avg_volume <= 0:
+                avg_volume = 1
 
             # =========================
             # 등락률
@@ -125,22 +125,16 @@ def market_scan(sample_size=500):
             # =========================
             # 거래량 배수
             # =========================
-            if avg_volume > 0:
-
-                volume_ratio = (
-                    volume / avg_volume
-                )
-
-            else:
-
-                volume_ratio = 1
+            volume_ratio = (
+                volume / avg_volume
+            )
 
             # =========================
             # AI 점수
             # =========================
             score = 50
 
-            # 거래량
+            # 거래량 증가
             if volume_ratio >= 3:
                 score += 25
 
