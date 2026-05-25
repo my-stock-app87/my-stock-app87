@@ -21,12 +21,15 @@ st.caption("AI 기반 종목 분석 · 급등주 탐지 · 가격대별 추천")
 def load_stock_list():
 
     try:
+
         krx = fdr.StockListing("KRX")
-        return krx[["Code", "Name"]].dropna()
+
+        return krx[
+            ["Code", "Name"]
+        ].dropna()
 
     except Exception:
 
-        # KRX 실패 시 기본 종목
         return pd.DataFrame({
 
             "Code": [
@@ -41,7 +44,9 @@ def load_stock_list():
                 "207940",
                 "068270",
                 "078130",
-                "027580",
+                "049080",
+                "328130",
+                "338220",
             ],
 
             "Name": [
@@ -56,7 +61,9 @@ def load_stock_list():
                 "삼성바이오로직스",
                 "셀트리온",
                 "국일제지",
-                "상보",
+                "기가레인",
+                "루닛",
+                "뷰노",
             ]
         })
 
@@ -89,26 +96,17 @@ def analyze_stock(df, stock_name):
     ma5 = df["Close"].rolling(5).mean().iloc[-1]
     ma20 = df["Close"].rolling(20).mean().iloc[-1]
 
-    # =========================
-    # 테마
-    # =========================
     theme = "일반테마"
 
-    if any(word in stock_name for word in ["국일", "상보", "크리스탈"]):
-        theme = "그래핀 / 신소재"
+    if any(word in stock_name for word in ["국일"]):
+        theme = "그래핀"
 
-    elif any(word in stock_name for word in ["LS", "대한전선"]):
-        theme = "전력인프라"
+    elif any(word in stock_name for word in ["기가"]):
+        theme = "통신장비"
 
-    elif any(word in stock_name for word in ["기가", "RF"]):
-        theme = "통신장비 / 반도체"
+    elif any(word in stock_name for word in ["루닛", "뷰노"]):
+        theme = "의료AI"
 
-    elif any(word in stock_name for word in ["에코", "포스코"]):
-        theme = "2차전지"
-
-    # =========================
-    # 뉴스 강도
-    # =========================
     if volume_ratio >= 3:
         news_power = "강함"
 
@@ -118,14 +116,11 @@ def analyze_stock(df, stock_name):
     else:
         news_power = "약함"
 
-    # =========================
-    # 현재 상황
-    # =========================
     if volume_ratio >= 3 and change_pct > 5:
 
         situation = "거래량 폭발 + 급등 흐름"
         strategy = "단기"
-        opinion = "추격매수는 조심. 눌림 확인 필요."
+        opinion = "추격매수는 조심."
 
     elif price > ma5 and price > ma20:
 
@@ -137,13 +132,7 @@ def analyze_stock(df, stock_name):
 
         situation = "세력 매집 가능성"
         strategy = "중기"
-        opinion = "분할매수 관점 가능."
-
-    elif price > ma20:
-
-        situation = "눌림목 가능성"
-        strategy = "중기"
-        opinion = "반등 확인 필요."
+        opinion = "분할매수 가능."
 
     else:
 
@@ -177,7 +166,8 @@ menu = st.sidebar.radio(
         "종목검색",
         "AI추천종목",
         "내일급등예상",
-        "가격대별추천"
+        "가격대별추천",
+        "관심종목감시"
     ]
 )
 
@@ -194,9 +184,6 @@ if menu == "종목검색":
         horizontal=True
     )
 
-    # =========================
-    # 종목명 검색
-    # =========================
     if search_mode == "종목명 선택":
 
         selected_stock = st.selectbox(
@@ -218,9 +205,6 @@ if menu == "종목검색":
 
         stock_name = selected_stock
 
-    # =========================
-    # 코드 검색
-    # =========================
     else:
 
         code = st.text_input(
@@ -233,9 +217,6 @@ if menu == "종목검색":
 
         stock_name = code
 
-    # =========================
-    # 데이터 로드
-    # =========================
     try:
 
         df = fdr.DataReader(code).tail(120)
@@ -260,9 +241,6 @@ if menu == "종목검색":
                 / prev_price
             ) * 100
 
-            # =========================
-            # 거래량 변화율
-            # =========================
             if prev_volume > 0:
 
                 volume_change_pct = (
@@ -271,6 +249,7 @@ if menu == "종목검색":
                 ) * 100
 
             else:
+
                 volume_change_pct = 0
 
             if volume_change_pct > 0:
@@ -289,9 +268,6 @@ if menu == "종목검색":
 
                 volume_text = "0.00% 동일"
 
-            # =========================
-            # 거래량 배수
-            # =========================
             avg_volume = (
                 df["Volume"]
                 .tail(20)
@@ -300,29 +276,19 @@ if menu == "종목검색":
 
             if avg_volume > 0:
                 volume_ratio = volume / avg_volume
-
             else:
                 volume_ratio = 0
 
-            # =========================
-            # 추천 가격
-            # =========================
             buy_price = int(price * 0.97)
             sell_price = int(price * 1.05)
             stop_loss = int(price * 0.94)
 
-            # =========================
-            # 현재가
-            # =========================
             st.metric(
                 label=f"{stock_name} 현재가",
                 value=f"{price:,}원",
                 delta=f"{change_pct:.2f}%"
             )
 
-            # =========================
-            # 정보 박스
-            # =========================
             col1, col2, col3, col4 = st.columns(4)
 
             with col1:
@@ -355,9 +321,6 @@ if menu == "종목검색":
                     f"손절가: {stop_loss:,}원"
                 )
 
-            # =========================
-            # 추천 가격
-            # =========================
             col5, col6 = st.columns(2)
 
             with col5:
@@ -372,16 +335,10 @@ if menu == "종목검색":
                     f"추천 매도가: {sell_price:,}원"
                 )
 
-            # =========================
-            # 차트
-            # =========================
             st.subheader("📈 최근 종가 차트")
 
             st.line_chart(df["Close"])
 
-            # =========================
-            # 최근 데이터
-            # =========================
             st.subheader("📊 최근 데이터")
 
             view_df = df.tail(20).copy()
@@ -410,9 +367,6 @@ if menu == "종목검색":
                 use_container_width=True
             )
 
-            # =========================
-            # AI 분석
-            # =========================
             analysis = analyze_stock(
                 df,
                 stock_name
@@ -420,44 +374,7 @@ if menu == "종목검색":
 
             st.subheader("🧠 AI 종합 분석")
 
-            a1, a2, a3, a4 = st.columns(4)
-
-            with a1:
-
-                st.info(
-                    f"테마: {analysis['테마']}"
-                )
-
-            with a2:
-
-                st.warning(
-                    f"뉴스강도: {analysis['뉴스강도']}"
-                )
-
-            with a3:
-
-                st.success(
-                    f"보유전략: {analysis['보유전략']}"
-                )
-
-            with a4:
-
-                st.metric(
-                    "거래량배수",
-                    analysis["거래량배수"]
-                )
-
-            st.markdown(f"""
-
-### 📌 현재상황
-
-{analysis["현재상황"]}
-
-### 💬 AI 의견
-
-{analysis["AI의견"]}
-
-""")
+            st.write(analysis)
 
     except Exception as e:
 
@@ -466,75 +383,47 @@ if menu == "종목검색":
         )
 
 # =========================
-# AI 추천 종목
+# AI 추천
 # =========================
 elif menu == "AI추천종목":
 
-    st.subheader("🤖 AI 추천 종목 TOP 10")
+    st.subheader("🤖 AI 추천 종목")
 
     if st.button("🚀 AI 스캔 시작"):
 
-        with st.spinner(
-            "AI 스캔 중..."
-        ):
+        result = run_ai_scan()
 
-            result = run_ai_scan()
-
-        if result["top10"].empty:
-
-            st.warning(
-                "추천 종목 없음"
-            )
-
-        else:
-
-            st.dataframe(
-                result["top10"],
-                use_container_width=True
-            )
+        st.dataframe(
+            result["top10"],
+            use_container_width=True
+        )
 
 # =========================
 # 내일 급등 예상
 # =========================
 elif menu == "내일급등예상":
 
-    st.subheader("🚀 내일 급등 예상 종목")
+    st.subheader("🚀 내일 급등 예상")
 
-    if st.button("🔥 급등 예상 스캔"):
+    if st.button("🔥 급등 예상 시작"):
 
-        with st.spinner(
-            "패턴 분석 중..."
-        ):
+        result = run_ai_scan()
 
-            result = run_ai_scan()
-
-        if result["tomorrow_surge"].empty:
-
-            st.warning(
-                "급등 예상 종목 없음"
-            )
-
-        else:
-
-            st.dataframe(
-                result["tomorrow_surge"],
-                use_container_width=True
-            )
+        st.dataframe(
+            result["tomorrow_surge"],
+            use_container_width=True
+        )
 
 # =========================
 # 가격대별 추천
 # =========================
 elif menu == "가격대별추천":
 
-    st.subheader("💰 가격대별 추천 종목")
+    st.subheader("💰 가격대별 추천")
 
-    if st.button("💎 가격대별 스캔 시작"):
+    if st.button("💎 가격대별 분석"):
 
-        with st.spinner(
-            "가격대 분석 중..."
-        ):
-
-            result = run_ai_scan()
+        result = run_ai_scan()
 
         tab1, tab2, tab3 = st.tabs(
             [
@@ -564,3 +453,105 @@ elif menu == "가격대별추천":
                 result["over_50000"],
                 use_container_width=True
             )
+
+# =========================
+# 관심종목 감시
+# =========================
+elif menu == "관심종목감시":
+
+    st.subheader("📌 관심종목 감시")
+
+    favorite_stocks = {
+
+        "국일제지": "078130",
+        "기가레인": "049080",
+        "루닛": "328130",
+        "뷰노": "338220",
+    }
+
+    result = []
+
+    for name, code in favorite_stocks.items():
+
+        try:
+
+            df = fdr.DataReader(code).tail(60)
+
+            if df.empty or len(df) < 25:
+                continue
+
+            latest = df.iloc[-1]
+            prev = df.iloc[-2]
+
+            price = int(latest["Close"])
+            prev_price = int(prev["Close"])
+
+            volume = int(latest["Volume"])
+
+            avg_volume = (
+                df["Volume"]
+                .tail(20)
+                .mean()
+            )
+
+            if avg_volume > 0:
+                volume_ratio = volume / avg_volume
+            else:
+                volume_ratio = 0
+
+            change_pct = (
+                (price - prev_price)
+                / prev_price
+            ) * 100
+
+            signal = "관망"
+
+            if volume_ratio >= 3:
+                signal = "거래량폭발"
+
+            elif (
+                volume_ratio >= 1.5
+                and abs(change_pct) <= 3
+            ):
+                signal = "세력매집중"
+
+            elif (
+                3 <= change_pct <= 8
+            ):
+                signal = "돌파직전"
+
+            score = 50
+
+            score += min(
+                int(volume_ratio * 10),
+                30
+            )
+
+            score += int(change_pct)
+
+            result.append({
+
+                "종목명": name,
+                "현재가": price,
+                "등락률": round(change_pct, 2),
+                "거래량배수": round(volume_ratio, 2),
+                "신호": signal,
+                "AI점수": score
+            })
+
+        except Exception:
+            continue
+
+    if result:
+
+        result_df = pd.DataFrame(result)
+
+        result_df = result_df.sort_values(
+            "AI점수",
+            ascending=False
+        )
+
+        st.dataframe(
+            result_df,
+            use_container_width=True
+        )
