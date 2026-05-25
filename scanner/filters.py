@@ -1,24 +1,39 @@
-def is_valid_stock(name, close, avg_volume):
-    if close <= 0:
+# =========================
+# 종목 필터
+# =========================
+
+def is_valid_stock(
+
+    name,
+    close,
+    avg_volume
+
+):
+
+    # 거래정지 제외
+    if "스팩" in name:
         return False
 
+    if "우" in name:
+        return False
+
+    # 너무 거래량 적은 종목 제외
     if avg_volume < 50000:
         return False
-
-    bad_words = ["스팩", "리츠", "ETN", "ETF", "우선주"]
-    for word in bad_words:
-        if word in str(name):
-            return False
 
     return True
 
 
-def price_zone(close):
-    if close <= 10000:
+# =========================
+# 가격대 분류
+# =========================
+def price_zone(price):
+
+    if price <= 10000:
         return "1만원 이하"
-    elif close <= 30000:
+
+    elif price <= 30000:
         return "3만원 이하"
-    elif close >= 50000:
-        return "5만원 이상"
+
     else:
-        return "중간가격대"
+        return "5만원 이상"
