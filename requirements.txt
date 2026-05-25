@@ -1,0 +1,11 @@
+streamlit
+pandas
+numpy
+FinanceDataReader
+feedparser
+streamlit-autorefresh
+plotly
+requests
+beautifulsoup4
+lxml
+yfinance
