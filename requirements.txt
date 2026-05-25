@@ -1,8 +1,8 @@
-streamlit
+streamlit==1.57.0
 pandas
 numpy
-FinanceDataReader
+finance-datareader
 requests
-lxml
 beautifulsoup4
+lxml
 plotly
