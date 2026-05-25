@@ -24,7 +24,7 @@ def run_ai_scan():
     # 랜덤 시장 스캔
     # =========================
 
-    scan_df = market_scan(sample_size=700)
+    scan_df = market_scan(sample_size=500)
 
     if scan_df.empty:
         return empty_result()

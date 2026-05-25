@@ -18,9 +18,9 @@ def price_zone(price):
 
 
 # =========================
-# 전체 시장 스캔
+# 시장 스캔
 # =========================
-def market_scan(sample_size=300):
+def market_scan(sample_size=500):
 
     try:
 
@@ -30,7 +30,9 @@ def market_scan(sample_size=300):
 
         ].dropna()
 
-    except Exception:
+    except Exception as e:
+
+        print("KRX 오류:", e)
 
         return pd.DataFrame()
 
@@ -94,7 +96,7 @@ def market_scan(sample_size=300):
             ) * 100
 
             # =========================
-            # 이동평균
+            # 이동평균선
             # =========================
             ma5 = (
 
@@ -138,7 +140,7 @@ def market_scan(sample_size=300):
             # =========================
             score = 50
 
-            # 거래량 증가
+            # 거래량
             if volume_ratio >= 3:
                 score += 25
 
@@ -148,7 +150,7 @@ def market_scan(sample_size=300):
             elif volume_ratio >= 1.2:
                 score += 10
 
-            # 이평 돌파
+            # 추세
             if close > ma5:
                 score += 10
 
@@ -268,7 +270,10 @@ def market_scan(sample_size=300):
                 "판단": action
             })
 
-        except Exception:
+        except Exception as e:
+
+            print(code, name, e)
+
             continue
 
     result_df = pd.DataFrame(result)
