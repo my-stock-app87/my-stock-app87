@@ -13,7 +13,7 @@ def empty_result():
 
 
 def run_ai_scan():
-    scan_df = market_scan(sample_size=100)
+    scan_df = market_scan()
 
     if scan_df.empty:
         return empty_result()
