@@ -167,7 +167,7 @@ menu = st.sidebar.radio(
         "AI추천종목",
         "내일급등예상",
         "가격대별추천",
-        "관심종목감시"
+       
     ]
 )
 
@@ -453,105 +453,3 @@ elif menu == "가격대별추천":
                 result["over_50000"],
                 use_container_width=True
             )
-
-# =========================
-# 관심종목 감시
-# =========================
-elif menu == "관심종목감시":
-
-    st.subheader("📌 관심종목 감시")
-
-    favorite_stocks = {
-
-        "국일제지": "078130",
-        "기가레인": "049080",
-        "루닛": "328130",
-        "뷰노": "338220",
-    }
-
-    result = []
-
-    for name, code in favorite_stocks.items():
-
-        try:
-
-            df = fdr.DataReader(code).tail(60)
-
-            if df.empty or len(df) < 25:
-                continue
-
-            latest = df.iloc[-1]
-            prev = df.iloc[-2]
-
-            price = int(latest["Close"])
-            prev_price = int(prev["Close"])
-
-            volume = int(latest["Volume"])
-
-            avg_volume = (
-                df["Volume"]
-                .tail(20)
-                .mean()
-            )
-
-            if avg_volume > 0:
-                volume_ratio = volume / avg_volume
-            else:
-                volume_ratio = 0
-
-            change_pct = (
-                (price - prev_price)
-                / prev_price
-            ) * 100
-
-            signal = "관망"
-
-            if volume_ratio >= 3:
-                signal = "거래량폭발"
-
-            elif (
-                volume_ratio >= 1.5
-                and abs(change_pct) <= 3
-            ):
-                signal = "세력매집중"
-
-            elif (
-                3 <= change_pct <= 8
-            ):
-                signal = "돌파직전"
-
-            score = 50
-
-            score += min(
-                int(volume_ratio * 10),
-                30
-            )
-
-            score += int(change_pct)
-
-            result.append({
-
-                "종목명": name,
-                "현재가": price,
-                "등락률": round(change_pct, 2),
-                "거래량배수": round(volume_ratio, 2),
-                "신호": signal,
-                "AI점수": score
-            })
-
-        except Exception:
-            continue
-
-    if result:
-
-        result_df = pd.DataFrame(result)
-
-        result_df = result_df.sort_values(
-            "AI점수",
-            ascending=False
-        )
-
-        st.dataframe(
-            result_df,
-            use_container_width=True
-        )
