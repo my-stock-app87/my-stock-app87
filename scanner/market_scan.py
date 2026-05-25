@@ -4,7 +4,7 @@ from scanner.filters import is_valid_stock, price_zone
 
 
 # =========================
-# KRX 종목 가져오기
+# 종목 가져오기
 # =========================
 def get_stock_list():
 
@@ -12,15 +12,13 @@ def get_stock_list():
 
         krx = fdr.StockListing("KRX")
 
-        krx = krx[
+        return krx[
             ["Code", "Name"]
         ].dropna()
 
-        return krx
-
     except Exception:
 
-        # KRX 실패 시 백업 종목
+        # 서버 실패시 백업 종목
 
         return pd.DataFrame({
 
@@ -223,20 +221,6 @@ def market_scan(sample_size=1000):
             # 거래량 자체
             if volume >= 300000:
                 score += 10
-
-            # 관심 테마 보정
-            if any(word in name for word in [
-
-                "국일",
-                "상보",
-                "크리스탈",
-                "루닛",
-                "뷰노",
-                "기가",
-
-            ]):
-
-                score += 20
 
             # =========================
             # 신호
