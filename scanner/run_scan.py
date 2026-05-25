@@ -26,16 +26,10 @@ def run_ai_scan():
         return empty_result()
 
     # =========================
-    # 제외 제거
-    # =========================
-    valid_df = scan_df[
-        scan_df["판단"] != "제외"
-    ].copy()
-
-    # =========================
     # AI 추천 종목
     # =========================
-    top10_df = valid_df.sort_values(
+
+    top10_df = scan_df.sort_values(
 
         ["AI점수", "거래량배수"],
 
@@ -47,23 +41,9 @@ def run_ai_scan():
     # 가격대별 추천
     # =========================
 
-    under_10000_df = valid_df[
+    under_10000_df = scan_df[
 
-        (valid_df["현재가"] <= 10000) &
-        (valid_df["AI점수"] >= 55)
-
-    ].sort_values(
-
-        ["AI점수", "거래량배수"],
-
-        ascending=False
-
-    ).head(5)
-
-    under_30000_df = valid_df[
-
-        (valid_df["현재가"] <= 30000) &
-        (valid_df["AI점수"] >= 55)
+        (scan_df["현재가"] <= 10000)
 
     ].sort_values(
 
@@ -73,10 +53,21 @@ def run_ai_scan():
 
     ).head(5)
 
-    over_50000_df = valid_df[
+    under_30000_df = scan_df[
 
-        (valid_df["현재가"] >= 50000) &
-        (valid_df["AI점수"] >= 55)
+        (scan_df["현재가"] <= 30000)
+
+    ].sort_values(
+
+        ["AI점수", "거래량배수"],
+
+        ascending=False
+
+    ).head(5)
+
+    over_50000_df = scan_df[
+
+        (scan_df["현재가"] >= 50000)
 
     ].sort_values(
 
@@ -90,38 +81,27 @@ def run_ai_scan():
     # 내일 급등 예상
     # =========================
 
-    tomorrow_surge_df = valid_df[
+    strong_signals = [
+
+        "세력매집중",
+        "돌파직전",
+        "눌림목",
+        "거래량폭발",
+
+    ]
+
+    tomorrow_surge_df = scan_df[
 
         (
-            valid_df["신호"].isin([
-                "세력매집중",
-                "돌파직전",
-                "눌림목"
-            ])
+            scan_df["신호"].isin(
+                strong_signals
+            )
         )
 
         &
 
         (
-            valid_df["등락률(%)"] >= -2
-        )
-
-        &
-
-        (
-            valid_df["등락률(%)"] <= 7
-        )
-
-        &
-
-        (
-            valid_df["거래량배수"] >= 1.3
-        )
-
-        &
-
-        (
-            valid_df["AI점수"] >= 60
+            scan_df["AI점수"] >= 40
         )
 
     ].sort_values(
@@ -138,19 +118,7 @@ def run_ai_scan():
 
     if tomorrow_surge_df.empty:
 
-        tomorrow_surge_df = valid_df[
-
-            (
-                valid_df["AI점수"] >= 65
-            )
-
-            &
-
-            (
-                valid_df["거래량배수"] >= 1.2
-            )
-
-        ].sort_values(
+        tomorrow_surge_df = scan_df.sort_values(
 
             ["AI점수", "거래량배수"],
 
