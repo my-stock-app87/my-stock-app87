@@ -23,8 +23,7 @@ def run_ai_scan():
     # =========================
     # 랜덤 시장 스캔
     # =========================
-
-    scan_df = market_scan(sample_size=500)
+    scan_df = market_scan(sample_size=100)
 
     if scan_df.empty:
         return empty_result()
@@ -32,7 +31,6 @@ def run_ai_scan():
     # =========================
     # AI 추천 종목
     # =========================
-
     top10_df = scan_df.sort_values(
 
         ["AI점수", "거래량배수"],
@@ -44,7 +42,6 @@ def run_ai_scan():
     # =========================
     # 가격대별 추천
     # =========================
-
     under_10000_df = scan_df[
 
         (scan_df["현재가"] <= 10000)
@@ -84,7 +81,6 @@ def run_ai_scan():
     # =========================
     # 내일 급등 예상
     # =========================
-
     tomorrow_surge_df = scan_df[
 
         (
@@ -102,18 +98,6 @@ def run_ai_scan():
             scan_df["거래량배수"] >= 1.2
         )
 
-        &
-
-        (
-            scan_df["등락률(%)"] >= -3
-        )
-
-        &
-
-        (
-            scan_df["등락률(%)"] <= 10
-        )
-
     ].sort_values(
 
         ["AI점수", "거래량배수"],
@@ -125,7 +109,6 @@ def run_ai_scan():
     # =========================
     # 비어있으면 대체
     # =========================
-
     if tomorrow_surge_df.empty:
 
         tomorrow_surge_df = scan_df.sort_values(

@@ -20,7 +20,7 @@ def price_zone(price):
 # =========================
 # 전체 시장 랜덤 스캔
 # =========================
-def market_scan(sample_size=200):
+def market_scan(sample_size=100):
 
     try:
 
