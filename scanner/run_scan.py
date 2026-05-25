@@ -20,7 +20,11 @@ def empty_result():
 
 def run_ai_scan():
 
-    scan_df = market_scan()
+    # =========================
+    # 랜덤 시장 스캔
+    # =========================
+
+    scan_df = market_scan(sample_size=700)
 
     if scan_df.empty:
         return empty_result()
@@ -81,27 +85,33 @@ def run_ai_scan():
     # 내일 급등 예상
     # =========================
 
-    strong_signals = [
-
-        "세력매집중",
-        "돌파직전",
-        "눌림목",
-        "거래량폭발",
-
-    ]
-
     tomorrow_surge_df = scan_df[
 
         (
-            scan_df["신호"].isin(
-                strong_signals
-            )
+            scan_df["신호"].isin([
+                "세력매집중",
+                "돌파직전",
+                "눌림목",
+                "거래량폭발"
+            ])
         )
 
         &
 
         (
-            scan_df["AI점수"] >= 40
+            scan_df["거래량배수"] >= 1.2
+        )
+
+        &
+
+        (
+            scan_df["등락률(%)"] >= -3
+        )
+
+        &
+
+        (
+            scan_df["등락률(%)"] <= 10
         )
 
     ].sort_values(
@@ -110,10 +120,10 @@ def run_ai_scan():
 
         ascending=False
 
-    ).head(5)
+    ).head(7)
 
     # =========================
-    # 없으면 예비 후보
+    # 비어있으면 대체
     # =========================
 
     if tomorrow_surge_df.empty:
@@ -124,7 +134,7 @@ def run_ai_scan():
 
             ascending=False
 
-        ).head(5)
+        ).head(7)
 
     return {
 

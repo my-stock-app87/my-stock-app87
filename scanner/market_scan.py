@@ -61,7 +61,7 @@ def get_stock_list():
 # =========================
 # 전체 시장 스캔
 # =========================
-def market_scan(sample_size=1000):
+def market_scan(sample_size=700):
 
     krx = get_stock_list()
 
