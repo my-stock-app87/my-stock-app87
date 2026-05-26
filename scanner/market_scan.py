@@ -218,13 +218,49 @@ def market_scan(sample_size=100):
                 action = "제외"
 
             # =========================
-            # 추천 가격
+            # 지지선 기반 추천 가격
             # =========================
-            buy_price = int(close * 0.97)
 
-            sell_price = int(close * 1.05)
+            # 최근 5일 최저가
+            recent_low = int(
 
-            stop_loss = int(close * 0.94)
+                df["Low"]
+                .tail(5)
+                .min()
+
+            )
+
+            # 20일 이동평균선
+            support_price = int(ma20)
+
+            # =========================
+            # 매수가
+            # =========================
+            buy_price = min(
+
+                support_price,
+
+                recent_low
+
+            )
+
+            # =========================
+            # 매도가
+            # =========================
+            sell_price = int(
+
+                close * 1.08
+
+            )
+
+            # =========================
+            # 손절가
+            # =========================
+            stop_loss = int(
+
+                buy_price * 0.97
+
+            )
 
             # =========================
             # 저장
