@@ -393,10 +393,65 @@ elif menu == "AI추천종목":
 
         result = run_ai_scan()
 
-        st.dataframe(
-            result["top10"],
-            use_container_width=True
-        )
+        for _, row in result["top10"].iterrows():
+
+            st.markdown("---")
+
+            st.subheader(
+                f"{row['종목명']} ({row['현재가']:,}원)"
+            )
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric(
+                    "AI점수",
+                    row["AI점수"]
+                )
+
+            with col2:
+                st.metric(
+                    "추세강도",
+                    row["추세강도"]
+                )
+
+            with col3:
+                st.metric(
+                    "거래량배수",
+                    row["거래량배수"]
+                )
+
+            st.success(
+                f"추천이유 : {row['추천이유']}"
+            )
+
+            st.info(
+                f"신호 : {row['신호']} | 판단 : {row['판단']}"
+            )
+
+            st.write(
+                f"""
+1차매수(40%) : {row['1차매수(40%)']:,}원
+
+2차매수(30%) : {row['2차매수(30%)']:,}원
+
+3차매수(30%) : {row['3차매수(30%)']:,}원
+
+예상평균단가 : {row['예상평균단가']:,}원
+"""
+            )
+
+            st.write(
+                f"""
+1차매도(20%) : {row['1차매도(20%)']:,}원
+
+2차매도(30%) : {row['2차매도(30%)']:,}원
+
+3차매도(50%) : {row['3차매도(50%)']:,}원
+
+손절가 : {row['손절가']:,}원
+"""
+            )
 
 # =========================
 # 내일 급등 예상
@@ -409,10 +464,27 @@ elif menu == "내일급등예상":
 
         result = run_ai_scan()
 
-        st.dataframe(
-            result["tomorrow_surge"],
-            use_container_width=True
-        )
+       for _, row in result["tomorrow_surge"].iterrows():
+
+    st.markdown("---")
+
+    st.subheader(
+        f"{row['종목명']} ({row['현재가']:,}원)"
+    )
+
+    st.write(
+        f"""
+AI점수 : {row['AI점수']}
+
+추세강도 : {row['추세강도']}
+
+추천이유 : {row['추천이유']}
+
+신호 : {row['신호']}
+
+판단 : {row['판단']}
+"""
+    )
 
 # =========================
 # 가격대별 추천
@@ -425,31 +497,14 @@ elif menu == "가격대별추천":
 
         result = run_ai_scan()
 
-        tab1, tab2, tab3 = st.tabs(
-            [
-                "1만원 이하",
-                "3만원 이하",
-                "5만원 이상"
-            ]
-        )
+       with tab1:
+    st.dataframe(result["under_10000"])
 
-        with tab1:
+with tab2:
+    st.dataframe(result["under_30000"])
 
-            st.dataframe(
-                result["under_10000"],
-                use_container_width=True
-            )
+with tab3:
+    st.dataframe(result["under_50000"])
 
-        with tab2:
-
-            st.dataframe(
-                result["under_30000"],
-                use_container_width=True
-            )
-
-        with tab3:
-
-            st.dataframe(
-                result["over_50000"],
-                use_container_width=True
-            )
+with tab4:
+    st.dataframe(result["over_50000"])
