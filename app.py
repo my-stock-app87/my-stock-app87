@@ -7,31 +7,26 @@ from scanner.run_scan import run_ai_scan
 # 기본 설정
 # =========================
 st.set_page_config(
-    page_title="주식주신 PRO Mobile V2",
-    layout="centered",
-    initial_sidebar_state="collapsed"
+    page_title="주식주신 PRO Mobile",
+    layout="centered"
 )
 
 # =========================
-# MOBILE V2 스타일
+# 모바일 B안 스타일
 # =========================
 st.markdown(
     """
 <style>
 .stApp {
-    background:
-        radial-gradient(circle at top left, rgba(155,92,255,0.22), transparent 32%),
-        radial-gradient(circle at top right, rgba(72,226,122,0.12), transparent 28%),
-        linear-gradient(180deg, #050713 0%, #090d18 48%, #03040a 100%);
-    color: #f8fafc;
+    background: radial-gradient(circle at top, #171b2f 0%, #070914 48%, #02030a 100%);
+    color: #f5f7ff;
 }
 
 .block-container {
-    max-width: 480px;
-    padding-top: 0.7rem;
-    padding-left: 0.7rem;
-    padding-right: 0.7rem;
-    padding-bottom: 5rem;
+    max-width: 560px;
+    padding-top: 1.2rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
 }
 
 h1, h2, h3, h4, h5, h6, p, label, span, div {
@@ -39,224 +34,148 @@ h1, h2, h3, h4, h5, h6, p, label, span, div {
 }
 
 section[data-testid="stSidebar"] {
-    background: #070a14;
-    border-right: 1px solid rgba(155,92,255,0.25);
+    background: #090d18;
+    border-right: 1px solid rgba(140, 90, 255, 0.25);
 }
 
-.header {
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    margin-bottom:12px;
+.mobile-title {
+    font-size: 30px;
+    font-weight: 950;
+    letter-spacing: -1px;
+    color: #ffffff;
+    margin-bottom: 4px;
 }
 
-.logo {
-    font-size:25px;
-    font-weight:950;
-    letter-spacing:-1px;
+.sub-text {
+    color: #9aa4b8;
+    font-size: 13px;
+    margin-bottom: 18px;
 }
 
-.pro {
-    color:#9b5cff;
-}
-
-.mini {
-    color:#9aa4b8;
-    font-size:12px;
-    margin-top:2px;
-}
-
-.card {
+.mobile-card {
     background: linear-gradient(145deg, rgba(18,24,39,0.98), rgba(7,10,18,0.98));
-    border: 1px solid rgba(155,92,255,0.26);
-    border-radius: 22px;
-    padding: 17px;
-    margin-bottom: 13px;
-    box-shadow: 0 0 24px rgba(155,92,255,0.12);
+    border: 1px solid rgba(155, 92, 255, 0.28);
+    border-radius: 18px;
+    padding: 18px;
+    box-shadow: 0 0 22px rgba(120, 70, 255, 0.12);
+    margin-bottom: 14px;
 }
 
-.hero {
-    border: 1px solid rgba(155,92,255,0.36);
-    box-shadow: 0 0 34px rgba(155,92,255,0.18);
-}
-
-.row {
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:12px;
+.mobile-card-soft {
+    background: rgba(15, 21, 36, 0.94);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 15px;
+    padding: 14px;
+    margin-bottom: 10px;
 }
 
 .label {
-    color:#9aa4b8;
-    font-size:12px;
-    font-weight:700;
-    margin-bottom:4px;
+    font-size: 12px;
+    color: #9aa4b8;
+    margin-bottom: 4px;
 }
 
-.price {
-    font-size:38px;
-    font-weight:950;
-    letter-spacing:-1px;
-    line-height:1.08;
+.value-big {
+    font-size: 34px;
+    font-weight: 950;
+    line-height: 1.12;
+    color: #ffffff;
 }
 
-.name {
-    font-size:27px;
-    font-weight:950;
-    letter-spacing:-1px;
+.value-mid {
+    font-size: 22px;
+    font-weight: 850;
+    color: #ffffff;
 }
 
-.code {
-    display:inline-block;
-    padding:4px 9px;
-    border-radius:999px;
-    background:rgba(155,92,255,0.16);
-    border:1px solid rgba(155,92,255,0.38);
-    color:#bd93ff;
-    font-size:12px;
-    font-weight:850;
-    margin-right:4px;
-    margin-top:6px;
+.value-small {
+    font-size: 15px;
+    font-weight: 700;
+    color: #cbd5e1;
 }
 
-.badge-red {
-    display:inline-block;
-    padding:4px 9px;
-    border-radius:999px;
-    background:rgba(255,91,106,0.15);
-    border:1px solid rgba(255,91,106,0.35);
-    color:#ff7080;
-    font-size:12px;
-    font-weight:850;
-    margin-top:6px;
-}
-
+.purple { color:#bd93ff; }
 .green { color:#48e27a; }
 .red { color:#ff5b6a; }
 .blue { color:#58a6ff; }
 .yellow { color:#ffd75e; }
-.purple { color:#bd93ff; }
-.gray { color:#9aa4b8; }
 
-.ai-ring {
-    width:106px;
-    height:106px;
-    border-radius:50%;
-    border:4px solid #9b5cff;
-    background: radial-gradient(circle, rgba(155,92,255,0.25), rgba(7,10,18,0.96));
-    box-shadow:0 0 32px rgba(155,92,255,0.55);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    flex-shrink:0;
+.badge {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(155, 92, 255, 0.18);
+    border: 1px solid rgba(155, 92, 255, 0.4);
+    color: #bd93ff;
+    font-weight: 800;
+    font-size: 12px;
+    margin-right: 5px;
+    margin-bottom: 5px;
 }
 
-.ai-score {
-    font-size:30px;
-    font-weight:950;
-    color:#bd93ff;
-    line-height:1;
+.badge-red {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(255, 91, 106, 0.15);
+    border: 1px solid rgba(255, 91, 106, 0.35);
+    color: #ff6b7a;
+    font-weight: 800;
+    font-size: 12px;
+    margin-right: 5px;
+    margin-bottom: 5px;
 }
 
-.ai-grade {
-    font-size:42px;
-    font-weight:950;
-    color:#ffd75e;
-    line-height:1;
+.ai-circle {
+    width: 104px;
+    height: 104px;
+    border-radius: 50%;
+    border: 4px solid #9b5cff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 26px rgba(155, 92, 255, 0.5);
+    background: radial-gradient(circle, rgba(155,92,255,0.2), rgba(10,13,22,0.95));
+    margin-left: auto;
 }
 
-.action-big {
-    font-size:25px;
-    font-weight:950;
+.price-buy {
+    background: rgba(72, 226, 122, 0.11);
+    border: 1px solid rgba(72, 226, 122, 0.24);
+    border-radius: 15px;
+    padding: 15px;
+    margin-bottom: 10px;
 }
 
-.grid2 {
-    display:grid;
-    grid-template-columns: 1fr 1fr;
-    gap:10px;
+.price-sell {
+    background: rgba(88, 166, 255, 0.11);
+    border: 1px solid rgba(88, 166, 255, 0.24);
+    border-radius: 15px;
+    padding: 15px;
+    margin-bottom: 10px;
 }
 
-.grid3 {
-    display:grid;
-    grid-template-columns: 1fr;
-    gap:9px;
+.price-stop {
+    background: rgba(255, 91, 106, 0.11);
+    border: 1px solid rgba(255, 91, 106, 0.24);
+    border-radius: 15px;
+    padding: 15px;
+    margin-bottom: 10px;
 }
 
-.mini-card {
-    background:rgba(255,255,255,0.045);
-    border:1px solid rgba(255,255,255,0.075);
-    border-radius:17px;
-    padding:13px;
+.line-card {
+    padding: 12px 14px;
+    border-radius: 13px;
+    background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(255,255,255,0.07);
+    margin-bottom: 9px;
+    font-size: 14px;
 }
 
-.buy {
-    background:rgba(72,226,122,0.105);
-    border:1px solid rgba(72,226,122,0.24);
-}
-
-.sell {
-    background:rgba(88,166,255,0.105);
-    border:1px solid rgba(88,166,255,0.24);
-}
-
-.stop {
-    background:rgba(255,91,106,0.12);
-    border:1px solid rgba(255,91,106,0.28);
-}
-
-.value {
-    font-size:22px;
-    font-weight:950;
-}
-
-.value2 {
-    font-size:18px;
-    font-weight:900;
-}
-
-.reason {
-    padding:11px 12px;
-    border-radius:14px;
-    background:rgba(255,255,255,0.045);
-    border:1px solid rgba(255,255,255,0.07);
-    margin-bottom:8px;
-    font-size:14px;
-}
-
-.section-title {
-    font-size:19px;
-    font-weight:950;
-    margin: 18px 0 9px;
-    letter-spacing:-0.5px;
-}
-
-.bottom-nav {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: 10px;
-    width: min(450px, calc(100% - 20px));
-    background: rgba(7,10,18,0.94);
-    border: 1px solid rgba(155,92,255,0.28);
-    border-radius: 20px;
-    padding: 9px 10px;
-    display:flex;
-    justify-content:space-around;
-    z-index:999;
-    backdrop-filter: blur(12px);
-    box-shadow: 0 0 24px rgba(0,0,0,0.35);
-}
-
-.nav-item {
-    font-size:12px;
-    font-weight:800;
-    color:#9aa4b8;
-    text-align:center;
-}
-
-.nav-active {
-    color:#bd93ff;
+.hr {
+    height: 1px;
+    background: rgba(255,255,255,0.08);
+    margin: 14px 0;
 }
 
 div[data-testid="stMetricValue"] {
@@ -267,19 +186,12 @@ div[data-testid="stMetricValue"] {
     color: #111827;
 }
 
-.stRadio label {
-    color: #e5e7eb !important;
-}
-
-@media (max-width: 520px) {
-    .block-container {
-        padding-left: 0.55rem;
-        padding-right: 0.55rem;
-    }
-    .price { font-size:34px; }
-    .name { font-size:25px; }
-    .ai-ring { width:96px; height:96px; }
-    .ai-score { font-size:27px; }
+@media (max-width: 640px) {
+    .mobile-title { font-size: 27px; }
+    .value-big { font-size: 30px; }
+    .value-mid { font-size: 20px; }
+    .mobile-card { padding: 16px; border-radius: 16px; }
+    .ai-circle { width: 92px; height: 92px; }
 }
 </style>
 """,
@@ -445,73 +357,94 @@ def analyze_stock(df, stock_name):
     }
 
 
-def price_box(kind, title, value, memo):
+def render_strategy_status():
     st.markdown(
-        f"""
-        <div class="mini-card {kind}">
-            <div class="label">{title}</div>
-            <div class="value">{value}</div>
-            <div class="mini">{memo}</div>
+        """
+        <div class="mobile-card">
+            <div class="label">🔥 현재 전략 백테스트 · 최근 100회 평균</div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                <div>
+                    <div class="value-big green">56.40%</div>
+                    <div class="value-small">성공 56 · 실패 44 · AI 신뢰도 A</div>
+                </div>
+                <div class="ai-circle">
+                    <div style="text-align:center;">
+                        <div style="font-size:24px; font-weight:950;">56.4%</div>
+                        <div class="label">승률</div>
+                    </div>
+                </div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
 
-def metric_box(title, value, memo="", color=""):
+def metric_card(label, value, sub="", color_class=""):
     st.markdown(
         f"""
-        <div class="mini-card">
-            <div class="label">{title}</div>
-            <div class="value2 {color}">{value}</div>
-            <div class="mini">{memo}</div>
+        <div class="mobile-card-soft">
+            <div class="label">{label}</div>
+            <div class="value-mid {color_class}">{value}</div>
+            <div class="value-small">{sub}</div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
 
-def render_stock_cards(df, max_rows=10):
+def price_card(kind, label, value, sub):
+    class_name = {
+        "buy": "price-buy",
+        "sell": "price-sell",
+        "stop": "price-stop",
+    }.get(kind, "mobile-card-soft")
+
+    st.markdown(
+        f"""
+        <div class="{class_name}">
+            <div class="label">{label}</div>
+            <div class="value-mid">{value}</div>
+            <div class="value-small">{sub}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def render_table_cards(df, max_rows=10):
     if df is None or df.empty:
         st.info("결과가 없습니다.")
         return
 
-    for i, (_, row) in enumerate(df.head(max_rows).iterrows(), start=1):
+    for _, row in df.head(max_rows).iterrows():
         name = row.get("종목명", "")
-        price = int(row.get("현재가", 0))
+        price = row.get("현재가", 0)
         score = row.get("AI점수", "")
         signal = row.get("신호", "")
         action = row.get("판단", "")
-        buy = int(row.get("매수가", 0))
-        sell = int(row.get("매도가", 0))
+        buy = row.get("매수가", "")
+        sell = row.get("매도가", "")
 
         st.markdown(
             f"""
-            <div class="card">
-                <div class="row">
+            <div class="mobile-card">
+                <div style="display:flex; justify-content:space-between; gap:10px;">
                     <div>
-                        <div class="label">#{i}</div>
-                        <div class="name">{name}</div>
-                        <span class="code">{signal}</span>
-                        <span class="badge-red">{action}</span>
+                        <div style="font-size:22px; font-weight:900;">{name}</div>
+                        <div class="label">현재가 {price:,}원</div>
                     </div>
                     <div style="text-align:right;">
-                        <div class="value purple">{score}</div>
+                        <div class="value-mid purple">{score}</div>
                         <div class="label">AI점수</div>
                     </div>
                 </div>
-                <div class="hr"></div>
-                <div class="grid2">
-                    <div>
-                        <div class="label">현재가</div>
-                        <div class="value2">{price:,}원</div>
-                    </div>
-                    <div style="text-align:right;">
-                        <div class="label">매도 목표</div>
-                        <div class="value2 blue">{sell:,}원</div>
-                    </div>
+                <div style="margin-top:8px;">
+                    <span class="badge">{signal}</span>
+                    <span class="badge-red">{action}</span>
                 </div>
-                <div class="mini">매수 기준 {buy:,}원</div>
+                <div class="hr"></div>
+                <div class="value-small">매수가 {buy:,}원 · 매도가 {sell:,}원</div>
             </div>
             """,
             unsafe_allow_html=True
@@ -519,25 +452,17 @@ def render_stock_cards(df, max_rows=10):
 
 
 # =========================
-# 데이터
+# 종목 리스트 로드
 # =========================
 krx = load_stock_list()
 
 # =========================
-# 상단
+# 제목
 # =========================
 st.markdown(
     """
-    <div class="header">
-        <div>
-            <div class="logo">🔥 주식주신 <span class="pro">PRO</span></div>
-            <div class="mini">MOBILE V2 · 빠른 매매 판단 화면</div>
-        </div>
-        <div style="text-align:right;">
-            <div class="label">전략승률</div>
-            <div style="font-size:20px; font-weight:950;" class="green">56.4%</div>
-        </div>
-    </div>
+    <div class="mobile-title">🔥 주식주신 <span class="purple">PRO</span></div>
+    <div class="sub-text">모바일 전용 · AI 종목 진단 · 분할매수/매도</div>
     """,
     unsafe_allow_html=True
 )
@@ -546,6 +471,7 @@ st.markdown(
 # 메뉴
 # =========================
 st.sidebar.title("📌 메뉴")
+
 menu = st.sidebar.radio(
     "선택",
     [
@@ -561,13 +487,17 @@ menu = st.sidebar.radio(
 # =========================
 if menu == "종목검색":
 
+    render_strategy_status()
+
+    st.markdown("### 🔍 종목 검색")
+
     search_mode = st.radio(
-        "검색",
-        ["종목명", "코드"],
+        "검색 방식",
+        ["종목명 선택", "종목코드 입력"],
         horizontal=True
     )
 
-    if search_mode == "종목명":
+    if search_mode == "종목명 선택":
         selected_stock = st.selectbox(
             "종목 선택",
             krx["Name"].tolist()
@@ -616,11 +546,11 @@ if menu == "종목검색":
                 volume_change_pct = 0
 
             if volume_change_pct > 0:
-                volume_text = f"+{volume_change_pct:.2f}%"
+                volume_text = f"+{volume_change_pct:.2f}% 증가"
             elif volume_change_pct < 0:
-                volume_text = f"{volume_change_pct:.2f}%"
+                volume_text = f"{volume_change_pct:.2f}% 감소"
             else:
-                volume_text = "0.00%"
+                volume_text = "0.00% 동일"
 
             avg_volume = df["Volume"].tail(20).mean()
             volume_ratio = volume / avg_volume if avg_volume > 0 else 0
@@ -640,45 +570,43 @@ if menu == "종목검색":
 
             analysis = analyze_stock(df, stock_name)
 
-            color_class = "red" if change_pct >= 0 else "blue"
-
-            # 메인 히어로
+            # 종목 메인 카드
             st.markdown(
                 f"""
-                <div class="card hero">
-                    <div class="row">
-                        <div>
-                            <div class="name">⭐ {stock_name}</div>
-                            <span class="code">{code}</span>
-                            <span class="code">{analysis["테마"]}</span>
+                <div class="mobile-card">
+                    <div>
+                        <div style="font-size:28px; font-weight:950;">⭐ {stock_name}</div>
+                        <div style="margin-top:6px;">
+                            <span class="badge">{code}</span>
+                            <span class="badge">{analysis["테마"]}</span>
                             <span class="badge-red">{analysis["AI판단"]}</span>
                         </div>
-                        <div class="ai-ring">
+                    </div>
+                    <div class="hr"></div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                        <div>
+                            <div class="label">현재가</div>
+                            <div class="value-big">{price:,}원</div>
+                            <div class="{'red' if change_pct >= 0 else 'blue'}" style="font-size:20px; font-weight:900;">
+                                {change_pct:+.2f}%
+                            </div>
+                        </div>
+                        <div class="ai-circle">
                             <div style="text-align:center;">
-                                <div class="ai-score">{analysis["AI점수"]:.0f}</div>
+                                <div style="font-size:30px; font-weight:950; color:#bd93ff;">{analysis["AI점수"]:.0f}</div>
                                 <div class="label">AI점수</div>
                             </div>
                         </div>
                     </div>
-
                     <div class="hr"></div>
-
-                    <div class="label">현재가</div>
-                    <div class="price">{price:,}원</div>
-                    <div class="{color_class}" style="font-size:20px; font-weight:950;">
-                        {change_pct:+.2f}%
-                    </div>
-
-                    <div class="hr"></div>
-
-                    <div class="grid2">
+                    <div style="display:flex; justify-content:space-between;">
                         <div>
                             <div class="label">AI등급</div>
-                            <div class="ai-grade">{analysis["AI등급"]}</div>
+                            <div style="font-size:40px; font-weight:950; color:#ffd75e;">{analysis["AI등급"]}</div>
                         </div>
                         <div style="text-align:right;">
                             <div class="label">전략</div>
-                            <div class="action-big purple">{analysis["보유전략"]}</div>
+                            <div class="value-mid purple">{analysis["보유전략"]}</div>
                         </div>
                     </div>
                 </div>
@@ -686,50 +614,55 @@ if menu == "종목검색":
                 unsafe_allow_html=True
             )
 
-            # 핵심 지표
-            st.markdown('<div class="section-title">📊 핵심 지표</div>', unsafe_allow_html=True)
-            c1, c2 = st.columns(2)
-            with c1:
-                metric_box("거래량", f"{volume:,}", f"전일대비 {volume_text}")
-            with c2:
-                metric_box("거래대금", f"{trading_value_eok:,.1f}억", f"{volume_ratio:.2f}배", "green")
+            # 핵심 지표 2열
+            st.markdown("### 📊 핵심 지표")
+            m1, m2 = st.columns(2)
+            with m1:
+                metric_card("거래량", f"{volume:,}", f"전일대비 {volume_text}")
+            with m2:
+                metric_card("거래대금", f"{trading_value_eok:,.1f}억", f"거래량배수 {volume_ratio:.2f}배", "green")
 
-            c3, c4 = st.columns(2)
-            with c3:
-                metric_box("오늘 고가", f"{int(latest['High']):,}원", "", "green")
-            with c4:
-                metric_box("오늘 저가", f"{int(latest['Low']):,}원", "", "yellow")
+            m3, m4 = st.columns(2)
+            with m3:
+                metric_card("오늘 고가", f"{int(latest['High']):,}원", "", "green")
+            with m4:
+                metric_card("오늘 저가", f"{int(latest['Low']):,}원", "", "yellow")
 
-            # 매수
-            st.markdown('<div class="section-title">💰 매수 구간</div>', unsafe_allow_html=True)
-            price_box("buy", "1차 매수 40%", f"{buy1:,}원", "가볍게 진입")
-            price_box("buy", "2차 매수 30%", f"{buy2:,}원", "눌림 확인")
-            price_box("buy", "3차 매수 30%", f"{buy3:,}원", "마지막 분할")
+            m5, m6 = st.columns(2)
+            with m5:
+                metric_card("5일선", f"{int(analysis['MA5']):,}원", "현재가 위" if price > analysis["MA5"] else "현재가 아래")
+            with m6:
+                metric_card("20일선", f"{int(analysis['MA20']):,}원", "현재가 위" if price > analysis["MA20"] else "현재가 아래")
 
-            # 매도 / 손절
-            st.markdown('<div class="section-title">🎯 매도 구간</div>', unsafe_allow_html=True)
-            price_box("sell", "1차 매도 30%", f"{sell1:,}원", "+4% 기본 목표")
-            price_box("sell", "2차 매도 30%", f"{sell2:,}원", "+7% 추세 지속")
-            price_box("sell", "3차 매도 40%", f"{sell3:,}원", "+12% 강한 상승")
-            price_box("stop", "🛑 손절가", f"{stop_loss:,}원", "-6% 기준 이탈")
+            # 매수 / 매도
+            st.markdown("### 💰 분할 매수")
+            price_card("buy", "1차 매수 (40%)", f"{buy1:,}원", "가볍게 진입")
+            price_card("buy", "2차 매수 (30%)", f"{buy2:,}원", "눌림 확인")
+            price_card("buy", "3차 매수 (30%)", f"{buy3:,}원", "마지막 분할")
+
+            st.markdown("### 🎯 분할 매도")
+            price_card("sell", "1차 매도 (30%)", f"{sell1:,}원", "기본 목표")
+            price_card("sell", "2차 매도 (30%)", f"{sell2:,}원", "추세 지속")
+            price_card("sell", "3차 매도 (40%)", f"{sell3:,}원", "강한 상승")
+            price_card("stop", "손절가", f"{stop_loss:,}원", "기준 이탈 시 정리")
 
             # AI 의견
             reason_lines = ""
             for reason, point in analysis["점수이유"]:
                 reason_lines += (
-                    f'<div class="reason">✅ {reason} '
+                    f'<div class="line-card">✅ {reason} '
                     f'<span style="float:right;" class="purple">{point}</span></div>'
                 )
 
             st.markdown(
                 f"""
-                <div class="card">
-                    <div class="section-title" style="margin-top:0;">🧠 AI 의견</div>
-                    <div class="reason">현재상황 : <b>{analysis["현재상황"]}</b></div>
-                    <div class="reason">보유전략 : <b>{analysis["보유전략"]}</b></div>
-                    <div class="reason">뉴스강도 : <b>{analysis["뉴스강도"]}</b></div>
+                <div class="mobile-card">
+                    <div style="font-size:22px; font-weight:950; color:#bd93ff; margin-bottom:12px;">🧠 AI 의견</div>
+                    <div class="line-card">현재상황 : <b>{analysis["현재상황"]}</b></div>
+                    <div class="line-card">보유전략 : <b>{analysis["보유전략"]}</b></div>
+                    <div class="line-card">뉴스강도 : <b>{analysis["뉴스강도"]}</b></div>
                     {reason_lines}
-                    <div style="font-size:19px; font-weight:950; color:#bd93ff; margin-top:12px;">
+                    <div style="font-size:20px; font-weight:900; color:#bd93ff; margin-top:14px;">
                         {analysis["AI의견"]}
                     </div>
                 </div>
@@ -738,7 +671,7 @@ if menu == "종목검색":
             )
 
             # 차트
-            st.markdown('<div class="section-title">📈 차트</div>', unsafe_allow_html=True)
+            st.markdown("### 📈 최근 종가 차트")
             chart_df = pd.DataFrame({
                 "종가": df["Close"],
                 "5일선": df["Close"].rolling(5).mean(),
@@ -746,7 +679,7 @@ if menu == "종목검색":
             })
             st.line_chart(chart_df)
 
-            with st.expander("최근 데이터 보기"):
+            with st.expander("📊 최근 데이터 보기"):
                 view_df = df.tail(20).copy()
                 view_df = view_df.rename(columns={
                     "Open": "시가",
@@ -755,6 +688,7 @@ if menu == "종목검색":
                     "Close": "종가",
                     "Volume": "거래량"
                 })
+
                 st.dataframe(
                     view_df[["시가", "고가", "저가", "종가", "거래량"]],
                     use_container_width=True
@@ -773,7 +707,7 @@ elif menu == "AI추천종목":
 
     if st.button("🚀 AI 스캔 시작"):
         result = run_ai_scan()
-        render_stock_cards(result["top10"], max_rows=10)
+        render_table_cards(result["top10"], max_rows=10)
 
 
 # =========================
@@ -785,7 +719,7 @@ elif menu == "내일급등예상":
 
     if st.button("🔥 급등 예상 시작"):
         result = run_ai_scan()
-        render_stock_cards(result["tomorrow_surge"], max_rows=10)
+        render_table_cards(result["tomorrow_surge"], max_rows=10)
 
 
 # =========================
@@ -809,32 +743,16 @@ elif menu == "가격대별추천":
         )
 
         with tab1:
-            render_stock_cards(result["under_10000"], max_rows=5)
+            render_table_cards(result["under_10000"], max_rows=5)
 
         with tab2:
-            render_stock_cards(result["under_30000"], max_rows=5)
+            render_table_cards(result["under_30000"], max_rows=5)
 
         with tab3:
             if "under_50000" in result:
-                render_stock_cards(result["under_50000"], max_rows=5)
+                render_table_cards(result["under_50000"], max_rows=5)
             else:
                 st.info("3~5만원 데이터 없음")
 
         with tab4:
-            render_stock_cards(result["over_50000"], max_rows=5)
-
-
-# =========================
-# 하단 네비 느낌
-# =========================
-st.markdown(
-    """
-    <div class="bottom-nav">
-        <div class="nav-item nav-active">🔍<br>진단</div>
-        <div class="nav-item">🤖<br>추천</div>
-        <div class="nav-item">🚀<br>급등</div>
-        <div class="nav-item">💰<br>가격</div>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+            render_table_cards(result["over_50000"], max_rows=5)
