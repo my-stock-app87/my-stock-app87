@@ -6,13 +6,6 @@ from scanner.run_scan import run_ai_scan
 # =========================
 # 기본 설정
 # =========================
-
-
-
-
-
-
-
 st.set_page_config(
     page_title="주식주신 PRO Mobile",
     layout="centered"
