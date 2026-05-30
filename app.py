@@ -163,7 +163,7 @@ section[data-testid="stSidebar"] {
 }
 
 .ai-grade {
-    font-size:42px;
+    font-size:52px;
     font-weight:950;
     color:#ffd75e;
     line-height:1;
@@ -581,7 +581,7 @@ st.markdown(
     """
     <div class="header">
         <div>
-            <div class="logo">🔥 주식주신 <span class="pro">PRO</span></div>
+            <div class="logo">🔥 주식주신 <span class="pro">PRO V4</span></div>
             <div class="mini">MOBILE V3 · 실전 매매 판단 화면</div>
         </div>
         <div style="text-align:right;">
@@ -696,7 +696,7 @@ if menu == "종목검색":
             # 메인 히어로
             st.markdown(
                 f"""
-                <div class="card hero">
+                <div class="card hero" style="border:2px solid rgba(155,92,255,0.45);">
                     <div class="row">
                         <div>
                             <div class="name" style="word-break:keep-all; line-height:1.18;">⭐ {stock_name}</div>
@@ -719,13 +719,15 @@ if menu == "종목검색":
                             <div class="label">현재가</div>
                             <div class="price">{price:,}원</div>
                             <div class="{color_class}" style="font-size:20px; font-weight:950;">
-                                {change_pct:+.2f}%
+                                ▲ {change_pct:+.2f}%
                             </div>
                         </div>
-                        <div style="text-align:right;">
-                            <div class="label">전략승률</div>
-                            <div class="value green">56.4%</div>
-                            <div class="mini">현재 계산식 기준</div>
+
+                        <div class="ai-ring">
+                            <div style="text-align:center;">
+                                <div class="ai-score">{analysis["AI점수"]:.0f}</div>
+                                <div class="label">AI점수</div>
+                            </div>
                         </div>
                     </div>
 
@@ -739,8 +741,14 @@ if menu == "종목검색":
                         <div class="decision-card" style="text-align:right;">
                             <div class="label">AI판단</div>
                             <div class="action-big purple">{analysis["AI판단"]}</div>
-                            <div class="mini">{analysis["보유전략"]}</div>
                         </div>
+                    </div>
+
+                    <div style="height:10px;"></div>
+
+                    <div class="decision-card">
+                        <div class="label">보유전략</div>
+                        <div class="action-big purple">{analysis["보유전략"]}</div>
                     </div>
                 </div>
                 """,
