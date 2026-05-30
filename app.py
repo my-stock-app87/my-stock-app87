@@ -7,13 +7,13 @@ from scanner.run_scan import run_ai_scan
 # 기본 설정
 # =========================
 st.set_page_config(
-    page_title="주식주신 PRO Mobile V3",
-    layout="wide",
+    page_title="주식주신 PRO Mobile V2",
+    layout="centered",
     initial_sidebar_state="collapsed"
 )
 
 # =========================
-# MOBILE V3 스타일
+# MOBILE V2 스타일
 # =========================
 st.markdown(
     """
@@ -27,12 +27,11 @@ st.markdown(
 }
 
 .block-container {
-    max-width: 900px;
-    margin: 0 auto;
-    padding-top: 1.2rem;
-    padding-left: 0.8rem;
-    padding-right: 0.8rem;
-    padding-bottom: 5.5rem;
+    max-width: 480px;
+    padding-top: 0.7rem;
+    padding-left: 0.7rem;
+    padding-right: 0.7rem;
+    padding-bottom: 5rem;
 }
 
 h1, h2, h3, h4, h5, h6, p, label, span, div {
@@ -42,17 +41,13 @@ h1, h2, h3, h4, h5, h6, p, label, span, div {
 section[data-testid="stSidebar"] {
     background: #070a14;
     border-right: 1px solid rgba(155,92,255,0.25);
-    min-width: 220px;
 }
 
 .header {
     display:flex;
     justify-content:space-between;
     align-items:center;
-    margin-bottom:18px;
-    padding:10px 4px 4px 4px;
-    position:relative;
-    z-index:10;
+    margin-bottom:12px;
 }
 
 .logo {
@@ -176,20 +171,6 @@ section[data-testid="stSidebar"] {
     font-weight:950;
 }
 
-.decision-card {
-    background:rgba(155,92,255,0.10);
-    border:1px solid rgba(155,92,255,0.24);
-    border-radius:17px;
-    padding:13px;
-}
-
-.grade-card {
-    background:rgba(255,215,94,0.10);
-    border:1px solid rgba(255,215,94,0.24);
-    border-radius:17px;
-    padding:13px;
-}
-
 .grid2 {
     display:grid;
     grid-template-columns: 1fr 1fr;
@@ -292,7 +273,6 @@ div[data-testid="stMetricValue"] {
 
 @media (max-width: 520px) {
     .block-container {
-        padding-top: 1.4rem;
         padding-left: 0.55rem;
         padding-right: 0.55rem;
     }
@@ -415,47 +395,14 @@ def analyze_stock(df, stock_name):
         ai_grade = "D"
         decision = "🔴 제외"
 
-    theme_map = {
-        "삼성전자": "반도체",
-        "SK하이닉스": "HBM",
-        "한미반도체": "HBM",
-        "리노공업": "반도체",
-        "DB하이텍": "반도체",
-        "가온칩스": "AI반도체",
+    theme = "일반테마"
 
-        "국일제지": "그래핀",
-        "상보": "그래핀",
-        "크리스탈신소재": "그래핀",
-        "나노X이미징": "그래핀",
-
-        "기가레인": "통신장비",
-        "대한광통신": "광통신",
-        "이노와이어리스": "통신장비",
-
-        "루닛": "의료AI",
-        "뷰노": "의료AI",
-        "제이엘케이": "의료AI",
-
-        "LG에너지솔루션": "2차전지",
-        "삼성SDI": "2차전지",
-        "LG화학": "2차전지",
-        "에코프로": "2차전지",
-        "에코프로비엠": "2차전지",
-
-        "현대차": "전기차",
-        "기아": "전기차",
-        "현대위아": "자동차부품",
-
-        "NAVER": "AI플랫폼",
-        "카카오": "플랫폼",
-        "카페24": "이커머스",
-
-        "LS ELECTRIC": "스마트그리드",
-        "옴니시스템": "스마트그리드",
-        "비츠로셀": "ESS",
-    }
-
-    theme = theme_map.get(stock_name, "일반테마")
+    if any(word in stock_name for word in ["국일"]):
+        theme = "그래핀"
+    elif any(word in stock_name for word in ["기가"]):
+        theme = "통신장비"
+    elif any(word in stock_name for word in ["루닛", "뷰노"]):
+        theme = "의료AI"
 
     if volume_ratio >= 3:
         news_power = "강함"
@@ -584,7 +531,7 @@ st.markdown(
     <div class="header">
         <div>
             <div class="logo">🔥 주식주신 <span class="pro">PRO</span></div>
-            <div class="mini">MOBILE V3 · 실전 매매 판단 화면</div>
+            <div class="mini">MOBILE V2 · 빠른 매매 판단 화면</div>
         </div>
         <div style="text-align:right;">
             <div class="label">전략승률</div>
@@ -701,7 +648,7 @@ if menu == "종목검색":
                 <div class="card hero">
                     <div class="row">
                         <div>
-                            <div class="name" style="word-break:keep-all; line-height:1.18;">⭐ {stock_name}</div>
+                            <div class="name">⭐ {stock_name}</div>
                             <span class="code">{code}</span>
                             <span class="code">{analysis["테마"]}</span>
                             <span class="badge-red">{analysis["AI판단"]}</span>
@@ -716,41 +663,23 @@ if menu == "종목검색":
 
                     <div class="hr"></div>
 
-                    <div class="row">
-                        <div>
-                            <div class="label">현재가</div>
-                            <div class="price">{price:,}원</div>
-                            <div class="{color_class}" style="font-size:20px; font-weight:950;">
-                                ▲ {change_pct:+.2f}%
-                            </div>
-                        </div>
-
-                        <div class="ai-ring">
-                            <div style="text-align:center;">
-                                <div class="ai-score">{analysis["AI점수"]:.0f}</div>
-                                <div class="label">AI점수</div>
-                            </div>
-                        </div>
+                    <div class="label">현재가</div>
+                    <div class="price">{price:,}원</div>
+                    <div class="{color_class}" style="font-size:20px; font-weight:950;">
+                        {change_pct:+.2f}%
                     </div>
 
                     <div class="hr"></div>
 
                     <div class="grid2">
-                        <div class="grade-card">
+                        <div>
                             <div class="label">AI등급</div>
                             <div class="ai-grade">{analysis["AI등급"]}</div>
                         </div>
-                        <div class="decision-card" style="text-align:right;">
-                            <div class="label">AI판단</div>
-                            <div class="action-big purple">{analysis["AI판단"]}</div>
+                        <div style="text-align:right;">
+                            <div class="label">전략</div>
+                            <div class="action-big purple">{analysis["보유전략"]}</div>
                         </div>
-                    </div>
-
-                    <div style="height:10px;"></div>
-
-                    <div class="decision-card">
-                        <div class="label">보유전략</div>
-                        <div class="action-big purple">{analysis["보유전략"]}</div>
                     </div>
                 </div>
                 """,
@@ -770,22 +699,6 @@ if menu == "종목검색":
                 metric_box("오늘 고가", f"{int(latest['High']):,}원", "", "green")
             with c4:
                 metric_box("오늘 저가", f"{int(latest['Low']):,}원", "", "yellow")
-
-            c5, c6 = st.columns(2)
-            with c5:
-                metric_box(
-                    "5일선",
-                    f"{int(analysis['MA5']):,}원",
-                    "현재가 위" if price > analysis["MA5"] else "현재가 아래",
-                    "green" if price > analysis["MA5"] else "blue"
-                )
-            with c6:
-                metric_box(
-                    "20일선",
-                    f"{int(analysis['MA20']):,}원",
-                    "현재가 위" if price > analysis["MA20"] else "현재가 아래",
-                    "green" if price > analysis["MA20"] else "blue"
-                )
 
             # 매수
             st.markdown('<div class="section-title">💰 매수 구간</div>', unsafe_allow_html=True)
@@ -912,12 +825,15 @@ elif menu == "가격대별추천":
 
 
 # =========================
-# 하단 안내
+# 하단 네비 느낌
 # =========================
 st.markdown(
     """
     <div class="bottom-nav">
-        <div class="nav-item nav-active">☰ 왼쪽 메뉴에서 추천 · 급등 · 가격대별 화면 전환</div>
+        <div class="nav-item nav-active">🔍<br>진단</div>
+        <div class="nav-item">🤖<br>추천</div>
+        <div class="nav-item">🚀<br>급등</div>
+        <div class="nav-item">💰<br>가격</div>
     </div>
     """,
     unsafe_allow_html=True
