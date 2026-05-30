@@ -8,7 +8,7 @@ from scanner.run_scan import run_ai_scan
 # =========================
 st.set_page_config(
     page_title="주식주신 PRO Mobile V3",
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="collapsed"
 )
 
@@ -27,8 +27,9 @@ st.markdown(
 }
 
 .block-container {
-    max-width: 520px;
-    padding-top: 1.8rem;
+    max-width: 900px;
+    margin: 0 auto;
+    padding-top: 1.2rem;
     padding-left: 0.8rem;
     padding-right: 0.8rem;
     padding-bottom: 5.5rem;
@@ -41,6 +42,7 @@ h1, h2, h3, h4, h5, h6, p, label, span, div {
 section[data-testid="stSidebar"] {
     background: #070a14;
     border-right: 1px solid rgba(155,92,255,0.25);
+    min-width: 220px;
 }
 
 .header {
@@ -163,7 +165,7 @@ section[data-testid="stSidebar"] {
 }
 
 .ai-grade {
-    font-size:52px;
+    font-size:42px;
     font-weight:950;
     color:#ffd75e;
     line-height:1;
@@ -581,7 +583,7 @@ st.markdown(
     """
     <div class="header">
         <div>
-            <div class="logo">🔥 주식주신 <span class="pro">PRO V4</span></div>
+            <div class="logo">🔥 주식주신 <span class="pro">PRO</span></div>
             <div class="mini">MOBILE V3 · 실전 매매 판단 화면</div>
         </div>
         <div style="text-align:right;">
@@ -696,7 +698,7 @@ if menu == "종목검색":
             # 메인 히어로
             st.markdown(
                 f"""
-                <div class="card hero" style="border:2px solid rgba(155,92,255,0.45);">
+                <div class="card hero">
                     <div class="row">
                         <div>
                             <div class="name" style="word-break:keep-all; line-height:1.18;">⭐ {stock_name}</div>
