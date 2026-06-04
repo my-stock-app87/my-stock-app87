@@ -61,47 +61,43 @@ def run_ai_scan():
     # AI 추천 종목
     # =========================
 
-# 1순위
-top10_df = v1_df.sort_values(
-    ["AI점수", "거래량배수"],
-    ascending=False
-).head(10)
-
-# 2순위
-if len(top10_df) < 5:
-
-    backup_df = scan_df[
-
-        (scan_df["AI점수"] >= 70)
-
-        &
-
-        (scan_df["등락률(%)"] >= 0)
-
-        &
-
-        (scan_df["등락률(%)"] <= 8)
-
-    ]
-
-    top10_df = backup_df.sort_values(
+    top10_df = v1_df.sort_values(
         ["AI점수", "거래량배수"],
         ascending=False
     ).head(10)
 
+    # V1 후보 부족 시 백업
+
+    if len(top10_df) < 5:
+
+        backup_df = scan_df[
+
+            (scan_df["AI점수"] >= 70)
+
+            &
+
+            (scan_df["등락률(%)"] >= 0)
+
+            &
+
+            (scan_df["등락률(%)"] <= 8)
+
+        ]
+
+        top10_df = backup_df.sort_values(
+            ["AI점수", "거래량배수"],
+            ascending=False
+        ).head(10)
+
     # =========================
     # 가격대별 추천
-    # (원래 방식 유지)
     # =========================
 
     under_10000_df = scan_df[
         scan_df["현재가"] <= 10000
     ].sort_values(
-
         ["AI점수", "거래량배수"],
-
         ascending=False
-
     ).head(5)
 
     under_30000_df = scan_df[
@@ -109,11 +105,8 @@ if len(top10_df) < 5:
         &
         (scan_df["현재가"] <= 30000)
     ].sort_values(
-
         ["AI점수", "거래량배수"],
-
         ascending=False
-
     ).head(5)
 
     under_50000_df = scan_df[
@@ -121,21 +114,15 @@ if len(top10_df) < 5:
         &
         (scan_df["현재가"] <= 50000)
     ].sort_values(
-
         ["AI점수", "거래량배수"],
-
         ascending=False
-
     ).head(5)
 
     over_50000_df = scan_df[
         scan_df["현재가"] > 50000
     ].sort_values(
-
         ["AI점수", "거래량배수"],
-
         ascending=False
-
     ).head(5)
 
     # =========================
@@ -143,11 +130,8 @@ if len(top10_df) < 5:
     # =========================
 
     tomorrow_surge_df = v1_df.sort_values(
-
         ["AI점수", "거래량배수"],
-
         ascending=False
-
     ).head(10)
 
     # 후보 부족 시 백업
@@ -155,11 +139,8 @@ if len(top10_df) < 5:
     if len(tomorrow_surge_df) < 5:
 
         tomorrow_surge_df = scan_df.sort_values(
-
             ["AI점수", "거래량배수"],
-
             ascending=False
-
         ).head(10)
 
     return {
