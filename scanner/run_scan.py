@@ -28,6 +28,8 @@ def run_ai_scan():
 
     scan_df = market_scan(sample_size=100)
 
+    print("전체종목:", len(scan_df))
+
     if scan_df.empty:
         return empty_result()
 
@@ -36,7 +38,7 @@ def run_ai_scan():
     # =========================
 
     v1_df = scan_df[
-
+    
         (scan_df["AI점수"] >= 70)
 
         &
@@ -56,6 +58,8 @@ def run_ai_scan():
         (scan_df["등락률(%)"] <= 8)
 
     ]
+    
+    print("관망후:", len(v1_df))
 
     # =========================
     # AI 추천 종목
