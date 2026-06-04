@@ -23,11 +23,15 @@ def price_zone(price):
 def market_scan(sample_size=100):
 
     try:
-        krx = fdr.StockListing("KRX")
-        krx = krx[["Code", "Name"]].dropna()
+        
+        krx = pd.read_csv(
+            "data/stock_list.csv",
+            dtype=str
+        )        
 
     except Exception as e:
-        print("KRX 오류:", e)
+        
+        print("csv 오류:", e)
         return pd.DataFrame()
 
     sample = krx.sample(
