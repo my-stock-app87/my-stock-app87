@@ -195,8 +195,6 @@ def market_scan(sample_size=100):
 
     print("최종결과:", len(result_df))
 
-print("최종결과:", len(result_df))
-
 if result_df.empty:
     return pd.DataFrame()
 
