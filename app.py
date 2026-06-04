@@ -206,23 +206,23 @@ div[data-testid="stMetricValue"] {
 def load_stock_list():
 
     try:
-        krx = fdr.StockListing("KRX")
-        return krx[["Code", "Name"]].dropna()
+        krx = pd.read_csv(
+            "data/stock_list_.csv",
+            dtype=str  
+        )
+        
+        return krx
 
-    except Exception:
+    except Exception as e:
+        
+        st.error(
+            f"종목목록 로딩 실패 : {e}"
+            
+        )  
+        
         return pd.DataFrame({
-            "Code": [
-                "005930", "000660", "035420", "035720", "005380",
-                "051910", "006400", "373220", "207940", "068270",
-                "078130", "049080", "328130", "338220",
-            ],
-            "Name": [
-                "삼성전자", "SK하이닉스", "NAVER", "카카오", "현대차",
-                "LG화학", "삼성SDI", "LG에너지솔루션", "삼성바이오로직스",
-                "셀트리온", "국일제지", "기가레인", "루닛", "뷰노",
-            ]
-        })
-
+            columns=["code", "name"]
+        )
 
 # =========================
 # AI 분석
