@@ -5,17 +5,11 @@ from scanner.market_scan import market_scan
 def empty_result():
 
     return {
-
         "top10": pd.DataFrame(),
-
         "under_10000": pd.DataFrame(),
-
         "under_30000": pd.DataFrame(),
-
         "under_50000": pd.DataFrame(),
-
         "over_50000": pd.DataFrame(),
-
         "tomorrow_surge": pd.DataFrame(),
     }
 
@@ -23,16 +17,17 @@ def empty_result():
 def run_ai_scan():
 
     # =========================
-    # 랜덤 시장 스캔
+    # 시장 스캔
     # =========================
 
-    scan_df = market_scan(sample_size=300)
+    scan_df = market_scan(sample_size=200)
 
     if scan_df.empty:
         return empty_result()
 
     # =========================
-    # V1 실전 전략
+    # 1순위 전략
+    # AI70 + 관망
     # =========================
 
     v1_df = scan_df[
@@ -58,19 +53,13 @@ def run_ai_scan():
     ]
 
     # =========================
-    # AI 추천 종목
+    # 관망 종목 부족 시
+    # AI70 전체 사용
     # =========================
 
-    top10_df = v1_df.sort_values(
-        ["AI점수", "거래량배수"],
-        ascending=False
-    ).head(10)
+    if len(v1_df) < 5:
 
-    # V1 후보 부족 시 백업
-
-    if len(top10_df) < 5:
-
-        backup_df = scan_df[
+        v1_df = scan_df[
 
             (scan_df["AI점수"] >= 70)
 
@@ -84,10 +73,17 @@ def run_ai_scan():
 
         ]
 
-        top10_df = backup_df.sort_values(
-            ["AI점수", "거래량배수"],
-            ascending=False
-        ).head(10)
+    # =========================
+    # AI 추천 종목
+    # =========================
+
+    top10_df = v1_df.sort_values(
+
+        ["AI점수", "거래량배수"],
+
+        ascending=False
+
+    ).head(10)
 
     # =========================
     # 가격대별 추천
@@ -130,18 +126,12 @@ def run_ai_scan():
     # =========================
 
     tomorrow_surge_df = v1_df.sort_values(
+
         ["AI점수", "거래량배수"],
+
         ascending=False
+
     ).head(10)
-
-    # 후보 부족 시 백업
-
-    if len(tomorrow_surge_df) < 5:
-
-        tomorrow_surge_df = scan_df.sort_values(
-            ["AI점수", "거래량배수"],
-            ascending=False
-        ).head(10)
 
     return {
 
