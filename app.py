@@ -207,7 +207,7 @@ def load_stock_list():
 
     try:
         krx = pd.read_csv(
-            "data/stock_list_.csv",
+            "data/stock_list.csv",
             dtype=str  
         )
         
@@ -220,7 +220,7 @@ def load_stock_list():
             
         )  
         
-        return pd.DataFrame({
+        return pd.DataFrame(
             columns=["code", "name"]
         )
 
