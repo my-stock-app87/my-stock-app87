@@ -193,7 +193,7 @@ def market_scan(sample_size=100):
 
     result_df = pd.DataFrame(result)
 
-    result_df = pd.DataFrame(result)
+    print("최종결과:", len(result_df))
 
 print("최종결과:", len(result_df))
 
