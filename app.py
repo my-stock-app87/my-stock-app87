@@ -413,57 +413,31 @@ def price_card(kind, label, value, sub):
 
 
 def render_table_cards(df, max_rows=10):
+
     if df is None or df.empty:
         st.info("결과가 없습니다.")
         return
 
     for _, row in df.head(max_rows).iterrows():
 
-        code = row.get("종목코드", "")
-        name = row.get("종목명", "")
-        price = row.get("현재가", 0)
+        code = str(row.get("종목코드", ""))
+        name = str(row.get("종목명", ""))
+        price = int(row.get("현재가", 0))
         score = row.get("AI점수", "")
         signal = row.get("신호", "")
         action = row.get("판단", "")
-        buy = row.get("매수가", "")
-        sell = row.get("매도가", "")
+        buy = int(row.get("매수가", 0))
+        sell = int(row.get("매도가", 0))
 
-        st.markdown(
-            f"""
-            <div class="mobile-card">
-                <div style="display:flex; justify-content:space-between; gap:10px;">
-                    <div>
-                        <div style="font-size:22px; font-weight:900;">{name}</div>
-
-                        <div class="label">
-                            종목코드 : {code}
-                        </div>
-
-                        <div class="label">
-                            현재가 {price:,}원
-                        </div>
-                    </div>
-
-                    <div style="text-align:right;">
-                        <div class="value-mid purple">{score}</div>
-                        <div class="label">AI점수</div>
-                    </div>
-                </div>
-
-                <div style="margin-top:8px;">
-                    <span class="badge">{signal}</span>
-                    <span class="badge-red">{action}</span>
-                </div>
-
-                <div class="hr"></div>
-
-                <div class="value-small">
-                    매수가 {buy:,}원 · 매도가 {sell:,}원
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+        st.markdown(f"### {name}")
+        st.write(f"종목코드 : {code}")
+        st.write(f"현재가 : {price:,}원")
+        st.write(f"AI점수 : {score}")
+        st.write(f"신호 : {signal}")
+        st.write(f"판단 : {action}")
+        st.write(f"매수가 : {buy:,}원")
+        st.write(f"매도가 : {sell:,}원")
+        st.divider()
 
 
 # =========================
