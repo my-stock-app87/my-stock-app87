@@ -418,6 +418,8 @@ def render_table_cards(df, max_rows=10):
         return
 
     for _, row in df.head(max_rows).iterrows():
+
+        code = row.get("종목코드", "")
         name = row.get("종목명", "")
         price = row.get("현재가", 0)
         score = row.get("AI점수", "")
@@ -432,19 +434,32 @@ def render_table_cards(df, max_rows=10):
                 <div style="display:flex; justify-content:space-between; gap:10px;">
                     <div>
                         <div style="font-size:22px; font-weight:900;">{name}</div>
-                        <div class="label">현재가 {price:,}원</div>
+
+                        <div class="label">
+                            종목코드 : {code}
+                        </div>
+
+                        <div class="label">
+                            현재가 {price:,}원
+                        </div>
                     </div>
+
                     <div style="text-align:right;">
                         <div class="value-mid purple">{score}</div>
                         <div class="label">AI점수</div>
                     </div>
                 </div>
+
                 <div style="margin-top:8px;">
                     <span class="badge">{signal}</span>
                     <span class="badge-red">{action}</span>
                 </div>
+
                 <div class="hr"></div>
-                <div class="value-small">매수가 {buy:,}원 · 매도가 {sell:,}원</div>
+
+                <div class="value-small">
+                    매수가 {buy:,}원 · 매도가 {sell:,}원
+                </div>
             </div>
             """,
             unsafe_allow_html=True
