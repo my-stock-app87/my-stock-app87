@@ -61,25 +61,33 @@ def run_ai_scan():
     # AI 추천 종목
     # =========================
 
-    top10_df = v1_df.sort_values(
+# 1순위
+top10_df = v1_df.sort_values(
+    ["AI점수", "거래량배수"],
+    ascending=False
+).head(10)
 
+# 2순위
+if len(top10_df) < 5:
+
+    backup_df = scan_df[
+
+        (scan_df["AI점수"] >= 70)
+
+        &
+
+        (scan_df["등락률(%)"] >= 0)
+
+        &
+
+        (scan_df["등락률(%)"] <= 8)
+
+    ]
+
+    top10_df = backup_df.sort_values(
         ["AI점수", "거래량배수"],
-
         ascending=False
-
     ).head(10)
-
-    # 추천 부족 시 백업
-
-    if len(top10_df) < 5:
-
-        top10_df = scan_df.sort_values(
-
-            ["AI점수", "거래량배수"],
-
-            ascending=False
-
-        ).head(10)
 
     # =========================
     # 가격대별 추천
