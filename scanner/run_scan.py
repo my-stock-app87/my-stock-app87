@@ -69,7 +69,7 @@ def run_ai_scan():
 
     ).head(10)
 
-    # 추천이 부족하면 기존 추천 사용
+    # 추천 부족 시 백업
 
     if len(top10_df) < 5:
 
@@ -83,10 +83,11 @@ def run_ai_scan():
 
     # =========================
     # 가격대별 추천
+    # (원래 방식 유지)
     # =========================
 
-    under_10000_df = v1_df[
-        v1_df["현재가"] <= 10000
+    under_10000_df = scan_df[
+        scan_df["현재가"] <= 10000
     ].sort_values(
 
         ["AI점수", "거래량배수"],
@@ -95,10 +96,10 @@ def run_ai_scan():
 
     ).head(5)
 
-    under_30000_df = v1_df[
-        (v1_df["현재가"] > 10000)
+    under_30000_df = scan_df[
+        (scan_df["현재가"] > 10000)
         &
-        (v1_df["현재가"] <= 30000)
+        (scan_df["현재가"] <= 30000)
     ].sort_values(
 
         ["AI점수", "거래량배수"],
@@ -107,10 +108,10 @@ def run_ai_scan():
 
     ).head(5)
 
-    under_50000_df = v1_df[
-        (v1_df["현재가"] > 30000)
+    under_50000_df = scan_df[
+        (scan_df["현재가"] > 30000)
         &
-        (v1_df["현재가"] <= 50000)
+        (scan_df["현재가"] <= 50000)
     ].sort_values(
 
         ["AI점수", "거래량배수"],
@@ -119,8 +120,8 @@ def run_ai_scan():
 
     ).head(5)
 
-    over_50000_df = v1_df[
-        v1_df["현재가"] > 50000
+    over_50000_df = scan_df[
+        scan_df["현재가"] > 50000
     ].sort_values(
 
         ["AI점수", "거래량배수"],
@@ -141,9 +142,7 @@ def run_ai_scan():
 
     ).head(10)
 
-    # =========================
-    # 부족 시 백업
-    # =========================
+    # 후보 부족 시 백업
 
     if len(tomorrow_surge_df) < 5:
 
