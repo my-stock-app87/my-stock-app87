@@ -49,6 +49,11 @@ def market_scan(sample_size=100):
         try:
             df = fdr.DataReader(code).tail(60)
 
+        except Exception as e:
+            print("에러종목:", code, name)
+            print("에러내용:", e)
+            continue
+
             if df.empty:
                 continue
 
