@@ -58,6 +58,13 @@ def market_scan(sample_size=100):
             latest = df.iloc[-1]
             prev = df.iloc[-2]
 
+            open_price = float(latest["Open"])
+            high = float(latest["High"])
+            low = float(latest["Low"])
+
+            candle_icon = "⚪ 일반"
+            ai_comment = "특별한 캔들 패턴 없음"
+
             close = int(latest["Close"])
             prev_close = int(prev["Close"])
             volume = int(latest["Volume"])
@@ -106,7 +113,44 @@ def market_scan(sample_size=100):
 
             elif close <= 10000:
                 score += 5
+                
+            # =========================
+            # 캔들 패턴 분석
+            # =========================
 
+            prev_open = float(prev["Open"])
+            prev_close_candle = float(prev["Close"])
+
+            if (
+                prev_close_candle < prev_open
+                and close > open_price
+                and open_price < prev_close_candle
+                and close > prev_open
+            ):
+                candle_icon = "🚀 상승장악형"
+                ai_comment = "강한 매수세 유입. 단기 돌파 가능성 높음."
+                score += 20
+
+            elif (
+                close > open_price
+                and ((close - open_price) / open_price) >= 0.05
+            ):
+                candle_icon = "🔥 장대양봉"
+                ai_comment = "강한 상승 흐름. 추가 상승 가능성."
+                score += 15
+
+            else:
+
+                body = abs(close - open_price)
+
+                lower_shadow = min(close, open_price) - low
+
+                if body > 0 and lower_shadow > body * 2:
+
+                    candle_icon = "🔨 망치형"
+                    ai_comment = "하락 후 반등 신호."
+                    score += 10
+                    
             # =========================
             # 거래대금 점수
             # =========================
@@ -174,6 +218,10 @@ def market_scan(sample_size=100):
                 "손절가": stop_loss,
 
                 "가격대": price_zone(close),
+
+                "캔들": candle_icon,
+
+                "AI해설": ai_comment,
 
                 "AI점수": round(score, 2),
 
