@@ -436,6 +436,8 @@ def render_table_cards(df, max_rows=10):
         st.write(f"종목코드 : {code}")
         st.write(f"현재가 : {price:,}원")
         st.write(f"AI점수 : {score}")
+        st.write(f"캔들 : {candle}")
+        st.write(f"AI해설 : {comment}")
         st.write(f"신호 : {signal}")
         st.write(f"판단 : {action}")
         st.write(f"매수가 : {buy:,}원")
