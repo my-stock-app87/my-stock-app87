@@ -424,6 +424,9 @@ def render_table_cards(df, max_rows=10):
         name = str(row.get("종목명", ""))
         price = int(row.get("현재가", 0))
         score = row.get("AI점수", "")
+        candle = row.get("캔들", "")
+        comment = row.get("AI해설", "")
+        
         signal = row.get("신호", "")
         action = row.get("판단", "")
         buy = int(row.get("매수가", 0))
